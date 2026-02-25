@@ -34,12 +34,22 @@ const ChatPanel = () => {
     setIsLoading(true);
 
     try {
+      // Read current org/process context from sessionStorage
+      const orgId = sessionStorage.getItem('currentOrgId') || '';
+      const orgName = sessionStorage.getItem('currentOrgName') || '';
+      const processId = sessionStorage.getItem('currentProcessId') || '';
+      const processName = sessionStorage.getItem('currentProcessName') || '';
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: trimmed,
           history: messages.slice(-20),
+          orgId,
+          orgName,
+          processId,
+          processName,
         }),
       });
 

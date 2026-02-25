@@ -117,23 +117,30 @@ async function executeTool(name, args) {
 }
 
 // ─── System prompt ───
-const PACE_SYSTEM_PROMPT = `You are Pace, a digital employee at Zamp. You are embedded in the Pace Live Dashboard.
+function buildSystemPrompt(orgId, orgName, processId, processName) {
+  let orgContext = "";
+  if (orgName) {
+    orgContext = "\nCURRENT CONTEXT:\n- Organization: " + orgName + " (ID: " + orgId + ")\n- Process: " + (processName || "none selected") + " (ID: " + (processId || "none") + ")\n\nThe user is currently viewing this org and process on the dashboard. Answer questions in this context unless they ask about a different org.";
+  }
 
-Your personality: Direct, warm, genuinely helpful. No emojis, no filler.
+  const defaultProcessName = processName || "Invoice Processing";
+  const defaultProcessId = processId || "edbee70e-72bd-4573-ae80-cd3888f6a75f";
 
-CAPABILITIES:
-1. READ the Knowledge Base - use read_knowledge_base tool
-2. UPDATE the Knowledge Base - use update_knowledge_base tool  
-3. APPEND to the Knowledge Base - use append_to_knowledge_base tool
-4. Answer questions about processes, runs, and dashboard data
-
-IMPORTANT: When the user asks to add, update, modify, or change the Knowledge Base,
-you MUST use the appropriate tool. Do NOT just describe what you would do.
-Actually call the function.
-
-The default process is Invoice Processing (ID: edbee70e-72bd-4573-ae80-cd3888f6a75f).
-
-You share context with the main Pace chat via Supabase.`;
+  return "You are Pace, a digital employee at Zamp. You are embedded in the Pace Live Dashboard.\n\n" +
+    "Your personality: Direct, warm, genuinely helpful. No emojis, no filler.\n" +
+    orgContext + "\n\n" +
+    "CAPABILITIES:\n" +
+    "1. READ the Knowledge Base - use read_knowledge_base tool\n" +
+    "2. UPDATE the Knowledge Base - use update_knowledge_base tool\n" +
+    "3. APPEND to the Knowledge Base - use append_to_knowledge_base tool\n" +
+    "4. Answer questions about processes, runs, and dashboard data\n" +
+    "5. Answer questions about any organization visible in the dashboard\n\n" +
+    "IMPORTANT: When the user asks to add, update, modify, or change the Knowledge Base,\n" +
+    "you MUST use the appropriate tool. Do NOT just describe what you would do.\n" +
+    "Actually call the function.\n\n" +
+    "The default process is " + defaultProcessName + " (ID: " + defaultProcessId + ").\n\n" +
+    "You share context with the main Pace chat via Supabase.";
+}
 
 // ─── Context fetchers ───
 async function fetchSharedContext() {
@@ -157,13 +164,19 @@ async function fetchSharedContext() {
   }
 }
 
-async function fetchDashboardContext() {
+async function fetchDashboardContext(processId) {
   try {
-    const { data: runs } = await supabase
+    let query = supabase
       .from("activity_runs")
       .select("id, name, document_name, status, current_status_text, created_at")
       .order("updated_at", { ascending: false })
       .limit(10);
+    
+    if (processId) {
+      query = query.eq("process_id", processId);
+    }
+
+    const { data: runs } = await query;
     if (!runs || runs.length === 0) return "";
     let ctx = "\n\n--- Current Dashboard State ---\nRecent runs:\n";
     for (const run of runs) {
@@ -233,6 +246,43 @@ function extractText(response) {
   }
 }
 
+
+async function fetchOrgContext() {
+  try {
+    const { data: orgs } = await supabase
+      .from("organizations")
+      .select("id, name, avatar_letter")
+      .order("created_at", { ascending: true });
+    if (!orgs || orgs.length === 0) return "";
+
+    let ctx = "\n\n--- Available Organizations ---\n";
+    for (const org of orgs) {
+      ctx += `\n### ${org.name} (ID: ${org.id})\n`;
+      const { data: procs } = await supabase
+        .from("processes")
+        .select("id, name")
+        .eq("org_id", org.id)
+        .order("created_at", { ascending: true });
+      if (procs && procs.length > 0) {
+        ctx += "Processes:\n";
+        for (const proc of procs) {
+          const { count } = await supabase
+            .from("activity_runs")
+            .select("id", { count: "exact", head: true })
+            .eq("process_id", proc.id);
+          ctx += `- ${proc.name} (ID: ${proc.id}) — ${count || 0} runs\n`;
+        }
+      } else {
+        ctx += "No processes yet\n";
+      }
+    }
+    return ctx;
+  } catch (e) {
+    console.error("Error fetching org context:", e);
+    return "";
+  }
+}
+
 // ─── Main handler ───
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -243,15 +293,16 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   try {
-    const { message, history = [] } = req.body;
+    const { message, history = [], orgId, orgName, processId, processName } = req.body;
     if (!message) return res.status(400).json({ error: "Message is required" });
 
-    const [sharedContext, dashboardContext] = await Promise.all([
+    const [sharedContext, dashboardContext, orgContext] = await Promise.all([
       fetchSharedContext(),
-      fetchDashboardContext(),
+      fetchDashboardContext(processId),
+      fetchOrgContext(),
     ]);
 
-    const fullSystemPrompt = PACE_SYSTEM_PROMPT + dashboardContext + sharedContext;
+    const fullSystemPrompt = buildSystemPrompt(orgId, orgName, processId, processName) + orgContext + dashboardContext + sharedContext;
 
     const model = genAI.getGenerativeModel({
       model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
@@ -286,7 +337,12 @@ export default async function handler(req, res) {
       const toolResults = [];
       for (const fc of functionCalls) {
         console.log(`[ROUND ${round}] Calling tool: ${fc.name}`);
-        const result = await executeTool(fc.name, fc.args || {});
+        // Inject current process context into tool args if not explicitly provided
+        const toolArgs = fc.args || {};
+        if (!toolArgs.process_id && processId) {
+          toolArgs.process_id = processId;
+        }
+        const result = await executeTool(fc.name, toolArgs);
         console.log(`[ROUND ${round}] Tool result:`, JSON.stringify(result).substring(0, 200));
         toolResults.push({
           functionResponse: {

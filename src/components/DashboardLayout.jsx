@@ -52,6 +52,7 @@ const DashboardLayout = () => {
     useEffect(() => {
         if (!currentOrg) return;
         sessionStorage.setItem('currentOrgId', currentOrg.id);
+        sessionStorage.setItem('currentOrgName', currentOrg.name || '');
 
         const loadProcesses = async () => {
             try {
@@ -76,6 +77,7 @@ const DashboardLayout = () => {
     useEffect(() => {
         if (currentProcess) {
             sessionStorage.setItem('currentProcessId', currentProcess.id);
+            sessionStorage.setItem('currentProcessName', currentProcess.name || '');
         }
     }, [currentProcess]);
 
