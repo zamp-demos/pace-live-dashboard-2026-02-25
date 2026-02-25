@@ -89,7 +89,7 @@ async function executeTool(name, args) {
     const buffer = await blob.arrayBuffer();
     const { error } = await supabase.storage
       .from("knowledge-base")
-      .upload(kbPath, buffer, { contentType: "text/markdown", upsert: true });
+      .upload(kbPath, buffer, { contentType: "text/markdown", upsert: true, cacheControl: "no-cache" });
     if (error) return { error: error.message };
     return { success: true, action: "replaced", processId };
   }
@@ -108,7 +108,7 @@ async function executeTool(name, args) {
     const buffer = await blob.arrayBuffer();
     const { error } = await supabase.storage
       .from("knowledge-base")
-      .upload(kbPath, buffer, { contentType: "text/markdown", upsert: true });
+      .upload(kbPath, buffer, { contentType: "text/markdown", upsert: true, cacheControl: "no-cache" });
     if (error) return { error: error.message };
     return { success: true, action: "appended", processId };
   }
@@ -209,6 +209,7 @@ async function saveChatLog(userMessage, assistantResponse) {
       .upload(`dashboard-chat/${timestamp}.md`, buffer, {
         contentType: "text/markdown",
         upsert: false,
+        cacheControl: "no-cache",
       });
   } catch (e) {
     console.error("Failed to save chat log:", e.message);

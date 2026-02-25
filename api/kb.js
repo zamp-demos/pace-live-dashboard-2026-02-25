@@ -44,6 +44,7 @@ export default async function handler(req, res) {
         .upload(kbPath, buffer, {
           contentType: "text/markdown",
           upsert: true,
+          cacheControl: "no-cache",
         });
 
       if (error) throw error;
@@ -77,6 +78,7 @@ export default async function handler(req, res) {
         .upload(kbPath, buffer, {
           contentType: "text/markdown",
           upsert: true,
+          cacheControl: "no-cache",
         });
 
       if (error) throw error;
