@@ -4,6 +4,7 @@ import DashboardLayout from './components/DashboardLayout';
 import ProcessList from './components/ProcessList';
 import ProcessDetails from './components/ProcessDetails';
 import KnowledgeBase from './components/KnowledgeBase';
+import ChatPanel from './components/ChatPanel';
 import Login from './components/Login';
 
 function App() {
@@ -19,6 +20,7 @@ function App() {
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <ChatPanel />
     </BrowserRouter>
   );
 }
