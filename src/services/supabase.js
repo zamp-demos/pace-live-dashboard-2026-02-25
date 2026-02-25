@@ -3,85 +3,98 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  realtime: {
-    params: {
-      eventsPerSecond: 20,
-    },
-  },
-});
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// Helper to subscribe to table changes
+// Subscribe to realtime changes on a table with optional filter
 export function subscribeToTable(table, filter, callback) {
-  const channel = supabase
-    .channel(`realtime-${table}-${Date.now()}`)
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table, filter },
-      (payload) => callback(payload)
-    )
-    .subscribe();
+    const channelName = `${table}-${filter || 'all'}-${Date.now()}`;
+    const channel = supabase
+        .channel(channelName)
+        .on('postgres_changes', {
+            event: '*',
+            schema: 'public',
+            table: table,
+            ...(filter ? { filter } : {})
+        }, () => {
+            callback();
+        })
+        .subscribe();
 
-  return () => supabase.removeChannel(channel);
+    return () => {
+        supabase.removeChannel(channel);
+    };
 }
 
-// Fetch helpers
+// Fetch all organizations
 export async function fetchOrgs() {
-  const { data, error } = await supabase
-    .from('organizations')
-    .select('*')
-    .order('created_at', { ascending: true });
-  if (error) throw error;
-  return data;
+    const { data, error } = await supabase
+        .from('organizations')
+        .select('*')
+        .order('created_at', { ascending: true });
+    if (error) throw error;
+    return data || [];
 }
 
+// Fetch processes for an org
 export async function fetchProcesses(orgId) {
-  const { data, error } = await supabase
-    .from('processes')
-    .select('*')
-    .eq('org_id', orgId)
-    .eq('status', 'active')
-    .order('created_at', { ascending: true });
-  if (error) throw error;
-  return data;
+    const { data, error } = await supabase
+        .from('processes')
+        .select('*')
+        .eq('org_id', orgId)
+        .order('created_at', { ascending: true });
+    if (error) throw error;
+    return data || [];
 }
 
+// Fetch activity runs for a process
 export async function fetchRuns(processId) {
-  const { data, error } = await supabase
-    .from('activity_runs')
-    .select('*')
-    .eq('process_id', processId)
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  return data;
+    const { data, error } = await supabase
+        .from('activity_runs')
+        .select('*')
+        .eq('process_id', processId)
+        .order('updated_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
 }
 
+// Fetch activity logs for a run
+// Actual columns: id, run_id, step_number, log_type, message, metadata, created_at
 export async function fetchLogs(runId) {
-  const { data, error } = await supabase
-    .from('activity_logs')
-    .select('*')
-    .eq('run_id', runId)
-    .order('step_number', { ascending: true });
-  if (error) throw error;
-  return data;
+    const { data, error } = await supabase
+        .from('activity_logs')
+        .select('*')
+        .eq('run_id', runId)
+        .order('step_number', { ascending: true });
+    if (error) throw error;
+    return data || [];
 }
 
+// Fetch artifacts for a run
+// Actual columns: id, run_id, filename, file_type, content, url, created_at
 export async function fetchArtifacts(runId) {
-  const { data, error } = await supabase
-    .from('artifacts')
-    .select('*')
-    .eq('run_id', runId)
-    .order('created_at', { ascending: true });
-  if (error) throw error;
-  return data;
+    const { data, error } = await supabase
+        .from('artifacts')
+        .select('*')
+        .eq('run_id', runId)
+        .order('created_at', { ascending: true });
+    if (error) throw error;
+    return data || [];
 }
 
+// Fetch knowledge base for a process
 export async function fetchKnowledgeBase(processId) {
-  const { data, error } = await supabase
-    .from('processes')
-    .select('knowledge_base')
-    .eq('id', processId)
-    .single();
-  if (error) throw error;
-  return data?.knowledge_base || '';
+    const { data, error } = await supabase
+        .from('processes')
+        .select('knowledge_base')
+        .eq('id', processId)
+        .single();
+    if (error) throw error;
+    if (!data?.knowledge_base) return null;
+    try {
+        return typeof data.knowledge_base === 'string'
+            ? JSON.parse(data.knowledge_base)
+            : data.knowledge_base;
+    } catch {
+        return data.knowledge_base;
+    }
 }

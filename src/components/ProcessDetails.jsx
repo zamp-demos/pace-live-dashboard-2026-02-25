@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Check, Activity, FileText, Clock, ExternalLink, Loader2 } from 'lucide-react';
+import { useParams } from 'react-router-dom';
+import { Check, Activity, FileText, Clock, ExternalLink, Loader2 } from 'lucide-react';
 import { fetchLogs, fetchArtifacts, subscribeToTable } from '../services/supabase';
 import { supabase } from '../services/supabase';
 
 const ProcessDetails = () => {
     const { runId } = useParams();
-    const navigate = useNavigate();
     const [logs, setLogs] = useState([]);
     const [artifacts, setArtifacts] = useState([]);
     const [run, setRun] = useState(null);
@@ -15,7 +14,6 @@ const ProcessDetails = () => {
     useEffect(() => {
         if (!runId) return;
 
-        // Fetch the run itself
         const loadRun = async () => {
             const { data } = await supabase.from('activity_runs').select('*').eq('id', runId).single();
             if (data) setRun(data);
@@ -23,18 +21,12 @@ const ProcessDetails = () => {
         loadRun();
 
         const loadLogs = async () => {
-            try {
-                const data = await fetchLogs(runId);
-                setLogs(data);
-            } catch (err) { console.error(err); }
+            try { setLogs(await fetchLogs(runId)); } catch (err) { console.error(err); }
         };
         loadLogs();
 
         const loadArtifacts = async () => {
-            try {
-                const data = await fetchArtifacts(runId);
-                setArtifacts(data);
-            } catch (err) { console.error(err); }
+            try { setArtifacts(await fetchArtifacts(runId)); } catch (err) { console.error(err); }
         };
         loadArtifacts();
 
@@ -51,27 +43,34 @@ const ProcessDetails = () => {
 
     const formatTime = (ts) => {
         if (!ts) return '';
-        const d = new Date(ts);
-        return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+        return new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
     };
 
-    const statusColor = (status) => {
-        switch (status) {
-            case 'success': return 'text-[#0da425]';
+    // Map log_type to visual style
+    const typeColor = (logType) => {
+        switch (logType) {
+            case 'complete': return 'text-[#0da425]';
             case 'error': return 'text-[#ff1515]';
-            case 'warning': return 'text-[#ED6704]';
-            case 'running': return 'text-[#2546F5]';
-            default: return 'text-[#8f8f8f]';
+            case 'decision': return 'text-[#2546F5]';
+            case 'artifact': return 'text-[#ED6704]';
+            case 'system': default: return 'text-[#8f8f8f]';
         }
     };
 
-    const statusIcon = (status) => {
-        switch (status) {
-            case 'success': return <Check className="w-3.5 h-3.5 text-[#0da425]" />;
+    const typeIcon = (logType) => {
+        switch (logType) {
+            case 'complete': return <Check className="w-3.5 h-3.5 text-[#0da425]" />;
             case 'error': return <Activity className="w-3.5 h-3.5 text-[#ff1515]" />;
-            case 'running': return <Loader2 className="w-3.5 h-3.5 text-[#2546F5] animate-spin" />;
-            default: return <Clock className="w-3.5 h-3.5 text-[#8f8f8f]" />;
+            case 'decision': return <Loader2 className="w-3.5 h-3.5 text-[#2546F5]" />;
+            case 'artifact': return <FileText className="w-3.5 h-3.5 text-[#ED6704]" />;
+            case 'system': default: return <Clock className="w-3.5 h-3.5 text-[#8f8f8f]" />;
         }
+    };
+
+    // Extract step_name from metadata if present
+    const getStepName = (log) => {
+        if (log.metadata?.step_name) return log.metadata.step_name;
+        return `Step ${log.step_number}`;
     };
 
     return (
@@ -112,7 +111,7 @@ const ProcessDetails = () => {
                                     {/* Timeline */}
                                     <div className="flex flex-col items-center">
                                         <div className="w-7 h-7 rounded-full bg-[#f7f7f7] border border-[#ebebeb] flex items-center justify-center flex-shrink-0">
-                                            {statusIcon(log.status)}
+                                            {typeIcon(log.log_type)}
                                         </div>
                                         {idx < logs.length - 1 && (
                                             <div className="w-[1px] h-full min-h-[20px] bg-[#ebebeb] my-1" />
@@ -121,17 +120,23 @@ const ProcessDetails = () => {
                                     {/* Content */}
                                     <div className="pb-4 flex-1 min-w-0">
                                         <div className="flex items-baseline gap-2">
-                                            <span className={`text-[13px] font-[500] ${statusColor(log.status)}`}>
-                                                {log.step_name || 'Step'}
+                                            <span className={`text-[13px] font-[500] ${typeColor(log.log_type)}`}>
+                                                {getStepName(log)}
+                                            </span>
+                                            <span className="text-[10px] text-[#cacaca] bg-[#f9f9f9] px-1.5 py-0.5 rounded">
+                                                {log.log_type}
                                             </span>
                                             <span className="text-[11px] text-[#cacaca]">{formatTime(log.created_at)}</span>
                                         </div>
                                         <div className="text-[13px] text-[#555] mt-0.5 leading-relaxed">
                                             {log.message}
                                         </div>
-                                        {log.details && (
+                                        {log.metadata && Object.keys(log.metadata).filter(k => k !== 'step_name').length > 0 && (
                                             <pre className="mt-2 text-[11px] text-[#8f8f8f] bg-[#fafafa] border border-[#f0f0f0] rounded-md p-2 overflow-x-auto whitespace-pre-wrap">
-                                                {typeof log.details === 'string' ? log.details : JSON.stringify(log.details, null, 2)}
+                                                {JSON.stringify(
+                                                    Object.fromEntries(Object.entries(log.metadata).filter(([k]) => k !== 'step_name')),
+                                                    null, 2
+                                                )}
                                             </pre>
                                         )}
                                     </div>
@@ -152,8 +157,8 @@ const ProcessDetails = () => {
                                     <div className="flex items-start gap-2">
                                         <FileText className="w-4 h-4 text-[#8f8f8f] mt-0.5 flex-shrink-0" />
                                         <div className="flex-1 min-w-0">
-                                            <div className="text-[12px] font-[500] text-[#171717] truncate">{art.name}</div>
-                                            <div className="text-[11px] text-[#8f8f8f] mt-0.5">{art.artifact_type}</div>
+                                            <div className="text-[12px] font-[500] text-[#171717] truncate">{art.filename}</div>
+                                            <div className="text-[11px] text-[#8f8f8f] mt-0.5">{art.file_type}</div>
                                         </div>
                                     </div>
                                     {art.url && (
