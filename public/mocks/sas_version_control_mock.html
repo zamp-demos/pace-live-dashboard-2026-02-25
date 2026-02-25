@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>SAS Enterprise Guide - Version Control</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            margin: 0;
+        }
+
+        .header {
+            background: #007acc;
+            color: white;
+            padding: 15px;
+        }
+
+        .script-info {
+            background: #2d2d2d;
+            padding: 20px;
+            margin: 20px;
+            border-left: 4px solid #007acc;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .version-table {
+            width: 95%;
+            background: #252526;
+            margin: 20px auto;
+            border-collapse: collapse;
+        }
+
+        .version-table th,
+        .version-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #3e3e42;
+        }
+
+        .version-table th {
+            background: #007acc;
+            color: white;
+        }
+
+        .version-table tr:hover {
+            background: #2d2d2d;
+        }
+
+        .status-final {
+            color: #4ec9b0;
+            font-weight: bold;
+        }
+
+        .status-prelim {
+            color: #ce9178;
+            font-weight: bold;
+        }
+
+        .highlight {
+            background: #264f78;
+            border: 2px solid #007acc;
+        }
+
+        .alert-box {
+            background: #4b1e1e;
+            border: 1px solid #f48771;
+            padding: 15px;
+            margin: 20px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>SAS Enterprise Guide | Audit Trail</h1>
+        <p>Analysis Service: box_primary_os.sas | Application: RARE-2024-603</p>
+    </div>
+
+    <div class="script-info">
+        <h3>Primary Endpoint Analysis: Overall Survival</h3>
+        <p><strong>Script:</strong> cox_primary_os.sas</p>
+        <p><strong>Current Active Version:</strong> v2.3 (FINAL_LOCK)</p>
+        <p><strong>Author:</strong> Sarah Chen, Senior Statistician</p>
+    </div>
+
+    <table class="version-table">
+        <thead>
+            <tr>
+                <th>Version</th>
+                <th>Date</th>
+                <th>Source Dataset</th>
+                <th>N Events</th>
+                <th>Hazard Ratio</th>
+                <th>P-Value</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>v2.1</td>
+                <td>2025-12-15</td>
+                <td>DS_LOCK_v1.0 (PRELIM)</td>
+                <td>70</td>
+                <td>0.65</td>
+                <td style="color: #f48771; font-weight: bold;">0.0023</td>
+                <td class="status-prelim">DEPRECATED</td>
+            </tr>
+            <tr>
+                <td>v2.2</td>
+                <td>2025-12-18</td>
+                <td>DS_LOCK_v1.5 (INTERIM)</td>
+                <td>72</td>
+                <td>0.67</td>
+                <td>0.0028</td>
+                <td class="status-prelim">INTERIM</td>
+            </tr>
+            <tr class="highlight">
+                <td><strong>v2.3</strong></td>
+                <td><strong>2025-12-22</strong></td>
+                <td><strong>DS_LOCK_v2.0 (FINAL)</strong></td>
+                <td><strong>73</strong></td>
+                <td><strong>0.68</strong></td>
+                <td class="status-final">0.0031</td>
+                <td class="status-final">FINAL-APPROVED</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="alert-box">
+        <h4 style="color: #f48771; margin-top: 0;">⚠️ VERSION MISMATCH ALERT</h4>
+        <p>The submitted Clinical Study Report references <strong>p=0.0023</strong>.</p>
+        <p>Our audit trail confirms this p-value belongs to <strong>v2.1 (Preliminary)</strong>, which only included 70
+            events. The Final Approved Locked dataset (v2.3) results in <strong>p=0.0031</strong>.</p>
+    </div>
+</body>
+
+</html>
