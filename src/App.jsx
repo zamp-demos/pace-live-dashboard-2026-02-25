@@ -15,7 +15,7 @@ function App() {
           <Route index element={<Navigate to="processes" replace />} />
           <Route path="processes" element={<ProcessList />} />
           <Route path="knowledge-base" element={<KnowledgeBase />} />
-          <Route path="process/:id" element={<ProcessDetails />} />
+          <Route path="process/:runId" element={<ProcessDetails />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
