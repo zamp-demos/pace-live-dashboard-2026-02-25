@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import {
     Check, Activity, FileText, Clock, ExternalLink, Loader2, X,
     Database, Asterisk, Presentation, Maximize2, ChevronDown, ChevronUp,
-    Download, Sliders, Filter, Layout, LayoutGrid, Menu, Brain
+    Download, Sliders, Filter, Layout, LayoutGrid, Menu, Brain, Briefcase
 } from 'lucide-react';
 import { fetchLogs, fetchArtifacts, subscribeToTable } from '../services/supabase';
 import { supabase } from '../services/supabase';
@@ -13,10 +13,22 @@ const REASONING_KEYS = new Set([
     'confidence', 'match_score', 'score', 'status', 'result',
     'reason', 'note', 'validation', 'match_result', 'flag',
     'accuracy', 'threshold', 'decision', 'outcome', 'verdict',
-    'similarity', 'match_type', 'method', 'model', 'duration_ms'
+    'similarity', 'match_type', 'method', 'model', 'duration_ms',
+    'document_type', 'action', 'completeness', 'quality_score',
+    'match_found', 'search_method', 'recommendation', 'action_id',
+    'decision_by', 'final_status', 'match_verdict', 'line_items_total'
 ]);
 
 const SKIP_KEYS = new Set(['step_name']);
+
+/* Fields we want to surface in Case Details sidebar */
+const CASE_DETAIL_KEYS = new Set([
+    'vendor', 'vendor_name', 'invoice_number', 'invoice_no',
+    'po_number', 'invoice_amount', 'total', 'currency',
+    'match_verdict', 'quality_score', 'final_status',
+    'document_type', 'invoice_date', 'po_date', 'department',
+    'linkages', 'decision_by', 'recommendation'
+]);
 
 function isLargeData(value) {
     if (value === null || value === undefined) return false;
@@ -24,7 +36,6 @@ function isLargeData(value) {
     if (typeof value === 'object') {
         const keys = Object.keys(value);
         if (keys.length >= 4) return true;
-        // Check if any nested value is itself a non-trivial object
         return keys.some(k => {
             const v = value[k];
             return (typeof v === 'object' && v !== null && Object.keys(v).length >= 2);
@@ -44,7 +55,6 @@ function classifyMetadata(metadata) {
         if (SKIP_KEYS.has(key)) return;
 
         if (isLargeData(value)) {
-            // This is a data artifact - extracted data, validation details, etc.
             const label = key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim();
             dataArtifacts.push({
                 id: `meta-${key}-${Math.random().toString(36).slice(2, 8)}`,
@@ -54,7 +64,6 @@ function classifyMetadata(metadata) {
                 _isMetaArtifact: true,
             });
         } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-            // Small object - flatten into reasoning
             Object.entries(value).forEach(([subKey, subVal]) => {
                 const flatKey = `${key}.${subKey}`;
                 if (typeof subVal !== 'object' || subVal === null) {
@@ -69,21 +78,52 @@ function classifyMetadata(metadata) {
     return { reasoning, dataArtifacts };
 }
 
+/* Extract case details from all logs */
+function extractCaseDetails(logs) {
+    const details = {};
+    // Process logs in order so later steps overwrite earlier ones (more complete data)
+    logs.forEach(log => {
+        if (!log.metadata) return;
+        Object.entries(log.metadata).forEach(([key, value]) => {
+            if (CASE_DETAIL_KEYS.has(key) && value !== null && value !== undefined) {
+                // Only take simple displayable values
+                if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+                    details[key] = value;
+                } else if (typeof value === 'object' && !Array.isArray(value)) {
+                    // For small objects like linkages, flatten to a readable string
+                    const parts = Object.entries(value)
+                        .filter(([, v]) => v !== null)
+                        .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`);
+                    if (parts.length > 0 && parts.length <= 3) {
+                        details[key] = parts.join(', ');
+                    }
+                }
+            }
+        });
+    });
+    return details;
+}
+
+/* Format field key for display */
+const formatFieldKey = (key) => {
+    const display = key
+        .replace(/([A-Z])/g, ' $1')
+        .replace(/_/g, ' ')
+        .replace(/\./g, ' > ')
+        .trim();
+    return display.charAt(0).toUpperCase() + display.slice(1);
+};
+
 /* ─── CollapsibleReasoning ─── */
 const CollapsibleReasoning = ({ reasoning }) => {
     const [isOpen, setIsOpen] = useState(false);
     const entries = Object.entries(reasoning || {});
     if (entries.length === 0) return null;
 
-    const formatKey = (key) => {
-        let display = key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').replace(/\./g, ' > ').trim();
-        return display.charAt(0).toUpperCase() + display.slice(1);
-    };
-
     const formatValue = (val) => {
         if (val === true) return 'Yes';
         if (val === false) return 'No';
-        if (val === null || val === undefined) return '—';
+        if (val === null || val === undefined) return '\u2014';
         return String(val);
     };
 
@@ -116,7 +156,7 @@ const CollapsibleReasoning = ({ reasoning }) => {
                 <div className="mt-2 bg-[#fafafa] border border-[#f0f0f0] rounded-md p-3 space-y-1.5">
                     {entries.map(([key, val]) => (
                         <div key={key} className="flex items-baseline gap-2 text-[11px]">
-                            <span className="text-[#9CA3AF] min-w-[100px] flex-shrink-0">{formatKey(key)}</span>
+                            <span className="text-[#9CA3AF] min-w-[100px] flex-shrink-0">{formatFieldKey(key)}</span>
                             <span className={`font-medium ${getValueColor(key, val)}`}>
                                 {formatValue(val)}
                             </span>
@@ -160,11 +200,6 @@ const DatasetViewer = ({ artifact, onClose }) => {
         flatten(parsedData);
         return flat;
     }, [parsedData, isTableData]);
-
-    const formatKey = (key) => {
-        let display = key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim();
-        return display.charAt(0).toUpperCase() + display.slice(1);
-    };
 
     return (
         <div className="flex flex-col h-full bg-white flex-1 min-w-[400px] overflow-hidden">
@@ -221,7 +256,7 @@ const DatasetViewer = ({ artifact, onClose }) => {
                                     {(isTableData ? Object.keys(parsedData[0] || {}) : Object.keys(flatData)).map(header => (
                                         <th key={header} className="px-4 py-2 text-[11px] font-bold text-gray-900 border-r border-gray-100 min-w-[150px] bg-[#f9fafb]">
                                             <div className="flex items-center justify-between group cursor-pointer hover:text-black">
-                                                <span>{formatKey(header)}</span>
+                                                <span>{formatFieldKey(header)}</span>
                                                 <ChevronDown className="w-3 h-3 text-gray-400 group-hover:text-gray-600" />
                                             </div>
                                         </th>
@@ -255,7 +290,7 @@ const DatasetViewer = ({ artifact, onClose }) => {
                             <div key={key} className={`group px-8 py-3 border-b border-gray-100 hover:bg-[#f9fafb] transition-colors ${index === 0 ? 'mt-4' : ''}`}>
                                 <div className="space-y-1.5 flex flex-col">
                                     <label className="block text-[11px] font-normal text-gray-400 transition-colors group-hover:text-gray-600">
-                                        {formatKey(key)}
+                                        {formatFieldKey(key)}
                                     </label>
                                     <div className="w-full max-w-[500px] px-3 py-1.5 bg-white border border-[#e5e7eb] rounded-[6px] shadow-[0_1px_2px_rgba(0,0,0,0.02)] text-[10px] text-[#171717] font-normal min-h-[32px] flex items-center">
                                         {value || '\u2014'}
@@ -281,30 +316,24 @@ const ProcessDetails = () => {
     const [isResizing, setIsResizing] = useState(false);
     const logsEndRef = useRef(null);
 
-    // Data loading + realtime subscriptions
     useEffect(() => {
         if (!runId) return;
-
         const loadRun = async () => {
             const { data } = await supabase.from('activity_runs').select('*').eq('id', runId).single();
             if (data) setRun(data);
         };
         loadRun();
-
         const loadLogs = async () => {
             try { setLogs(await fetchLogs(runId)); } catch (err) { console.error(err); }
         };
         loadLogs();
-
         const loadArtifacts = async () => {
             try { setArtifacts(await fetchArtifacts(runId)); } catch (err) { console.error(err); }
         };
         loadArtifacts();
-
         const unsubLogs = subscribeToTable('activity_logs', `run_id=eq.${runId}`, () => loadLogs());
         const unsubArtifacts = subscribeToTable('artifacts', `run_id=eq.${runId}`, () => loadArtifacts());
         const unsubRun = subscribeToTable('activity_runs', `id=eq.${runId}`, () => loadRun());
-
         return () => { unsubLogs(); unsubArtifacts(); unsubRun(); };
     }, [runId]);
 
@@ -312,7 +341,6 @@ const ProcessDetails = () => {
         logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [logs]);
 
-    // Resize
     useEffect(() => {
         if (!isResizing) return;
         const handleMouseMove = (e) => {
@@ -325,16 +353,12 @@ const ProcessDetails = () => {
         return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
     }, [isResizing]);
 
-    // Classify all log metadata into reasoning + data artifacts
     const logMetaClassified = useMemo(() => {
         const map = {};
-        logs.forEach(log => {
-            map[log.id] = classifyMetadata(log.metadata);
-        });
+        logs.forEach(log => { map[log.id] = classifyMetadata(log.metadata); });
         return map;
     }, [logs]);
 
-    // Collect ALL data artifacts: from artifacts table + from metadata
     const allArtifacts = useMemo(() => {
         const combined = [...artifacts];
         Object.values(logMetaClassified).forEach(({ dataArtifacts }) => {
@@ -345,35 +369,28 @@ const ProcessDetails = () => {
         return combined;
     }, [artifacts, logMetaClassified]);
 
+    // Extract case details from log metadata
+    const caseDetails = useMemo(() => extractCaseDetails(logs), [logs]);
+
     const formatTime = (ts) => {
         if (!ts) return '';
         return new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
     };
-
     const formatDate = (ts) => {
         if (!ts) return '';
         return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     };
-
     const getStepName = (log) => log.metadata?.step_name || `Step ${log.step_number}`;
 
-    // FIX: Icon status based on position in timeline + run status
     const getIconStatus = (log, index) => {
         if (log.log_type === 'error') return 'error';
         if (log.log_type === 'complete') return 'complete';
-
         const isLast = index === logs.length - 1;
-
-        if (!isLast) {
-            // Not the last step — it finished, so it's done
-            return 'complete';
-        }
-
-        // Last step — depends on run status
+        if (!isLast) return 'complete';
         if (!run) return 'in-progress';
         if (run.status === 'done') return 'complete';
         if (run.status === 'needs_attention' || run.status === 'needs_review') return 'error';
-        return 'in-progress'; // ready, in_progress
+        return 'in-progress';
     };
 
     const isViewableArtifact = (art) => {
@@ -384,16 +401,10 @@ const ProcessDetails = () => {
     };
 
     const handleArtifactClick = (art) => {
-        if (isViewableArtifact(art)) {
-            setSelectedArtifact(art);
-        } else if (art.url) {
-            window.open(art.url, '_blank');
-        }
+        if (isViewableArtifact(art)) setSelectedArtifact(art);
+        else if (art.url) window.open(art.url, '_blank');
     };
 
-    const closeArtifactPanel = () => setSelectedArtifact(null);
-
-    // Match DB artifacts to artifact-type logs
     const getDbArtifactsForLog = (log) => {
         if (log.log_type !== 'artifact') return [];
         return artifacts.filter(a =>
@@ -402,11 +413,21 @@ const ProcessDetails = () => {
         );
     };
 
-    /* ─── JSX Return ─── */
+    const formatCaseValue = (key, val) => {
+        if (typeof val === 'number') {
+            if (key.includes('amount') || key.includes('total')) {
+                return val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            }
+            if (key.includes('score')) return val.toFixed(2);
+            return String(val);
+        }
+        return String(val);
+    };
+
     return (
         <div className="flex h-full bg-white overflow-hidden">
-            {/* Main content */}
-            <div className={`flex-1 flex flex-col min-w-0 transition-all duration-200 ${selectedArtifact ? '' : 'mr-[400px]'}`}>
+            {/* Main content - NO margin-right, flex handles it */}
+            <div className="flex-1 flex flex-col min-w-0">
                 {/* Header */}
                 <div className="flex-shrink-0 px-6 py-5 border-b border-[#f0f0f0] bg-white">
                     <div className="flex items-center justify-between">
@@ -452,9 +473,7 @@ const ProcessDetails = () => {
 
                                 return (
                                     <div key={log.id} className="flex gap-4 pb-6 relative">
-                                        {/* Timeline track */}
                                         <div className="flex flex-col items-center w-[11px] flex-shrink-0 pt-[4px]">
-                                            {/* Icon */}
                                             <div className={`w-[11px] h-[11px] rounded-[2px] border flex-shrink-0 ${
                                                 status === 'complete'
                                                     ? 'bg-[#E6F3EA] border-[#66B280]'
@@ -462,13 +481,10 @@ const ProcessDetails = () => {
                                                     ? 'bg-[#FFDADA] border-[#A40000]'
                                                     : 'bg-[#DADAFF] border-[#0000A4] animate-square-to-diamond'
                                             }`} />
-                                            {/* Connector */}
                                             {!isLastItem && (
                                                 <div className="w-[1px] bg-[#E5E7EB] flex-1 min-h-[20px] mt-1" />
                                             )}
                                         </div>
-
-                                        {/* Content */}
                                         <div className="flex-1 min-w-0 pb-2">
                                             <div className="flex items-center gap-2 flex-wrap">
                                                 <span className="text-[13px] font-medium text-[#171717]">
@@ -481,8 +497,6 @@ const ProcessDetails = () => {
                                             <p className="text-[12px] text-[#666] mt-0.5 leading-relaxed">
                                                 {log.message}
                                             </p>
-
-                                            {/* DB Artifact buttons */}
                                             {dbArtifactsForLog.length > 0 && (
                                                 <div className="flex flex-wrap gap-2 mt-2">
                                                     {dbArtifactsForLog.map(art => (
@@ -494,8 +508,6 @@ const ProcessDetails = () => {
                                                     ))}
                                                 </div>
                                             )}
-
-                                            {/* Metadata data artifact buttons */}
                                             {logDataArtifacts.length > 0 && (
                                                 <div className="flex flex-wrap gap-2 mt-2">
                                                     {logDataArtifacts.map(da => (
@@ -507,8 +519,6 @@ const ProcessDetails = () => {
                                                     ))}
                                                 </div>
                                             )}
-
-                                            {/* Reasoning collapsible */}
                                             <CollapsibleReasoning reasoning={classified.reasoning} />
                                         </div>
                                     </div>
@@ -520,13 +530,13 @@ const ProcessDetails = () => {
                 </div>
             </div>
 
-            {/* Right Sidebar: Key Details OR Artifact Viewer */}
+            {/* Right panel: Artifact viewer OR Key Details sidebar */}
             {selectedArtifact ? (
                 <>
                     <div className="w-1 cursor-col-resize hover:bg-blue-200 active:bg-blue-300 transition-colors flex-shrink-0"
                         onMouseDown={() => setIsResizing(true)} />
                     <div style={{ width: artifactWidth }} className="flex-shrink-0 border-l border-[#f0f0f0]">
-                        <DatasetViewer artifact={selectedArtifact} onClose={closeArtifactPanel} />
+                        <DatasetViewer artifact={selectedArtifact} onClose={() => setSelectedArtifact(null)} />
                     </div>
                 </>
             ) : (
@@ -535,8 +545,30 @@ const ProcessDetails = () => {
                         <h3 className="text-[13px] font-semibold text-[#171717] mb-1">Key Details</h3>
                     </div>
 
+                    {/* Case Details - extracted from log metadata */}
+                    {Object.keys(caseDetails).length > 0 && (
+                        <div className="px-5 pb-4">
+                            <div className="flex items-center gap-2 mb-3">
+                                <Briefcase className="w-3.5 h-3.5 text-[#9CA3AF]" />
+                                <span className="text-[11px] font-medium text-[#9CA3AF] uppercase tracking-wider">Case Details</span>
+                            </div>
+                            <div className="space-y-2.5">
+                                {Object.entries(caseDetails).map(([key, value]) => (
+                                    <div key={key} className="flex items-start">
+                                        <span className="text-[12px] text-gray-500 w-[120px] flex-shrink-0">{formatFieldKey(key)}</span>
+                                        <span className="text-[12px] text-gray-900 font-medium flex-1 break-words">
+                                            {formatCaseValue(key, value)}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {Object.keys(caseDetails).length > 0 && <div className="mx-5 border-t border-[#f0f0f0]" />}
+
                     {/* Run Details */}
-                    <div className="px-5 pb-4">
+                    <div className="px-5 py-4">
                         <div className="flex items-center gap-2 mb-3">
                             <Database className="w-3.5 h-3.5 text-[#9CA3AF]" />
                             <span className="text-[11px] font-medium text-[#9CA3AF] uppercase tracking-wider">Run Details</span>
@@ -545,8 +577,8 @@ const ProcessDetails = () => {
                             {[
                                 ['Run ID', runId?.slice(0, 8)],
                                 ['Status', run?.status?.replace(/_/g, ' ')],
-                                ['Started', run?.started_at ? formatDate(run.started_at) + ' ' + formatTime(run.started_at) : '—'],
-                                ['Completed', run?.completed_at ? formatDate(run.completed_at) + ' ' + formatTime(run.completed_at) : '—'],
+                                ['Started', run?.started_at ? formatDate(run.started_at) + ' ' + formatTime(run.started_at) : '\u2014'],
+                                ['Completed', run?.completed_at ? formatDate(run.completed_at) + ' ' + formatTime(run.completed_at) : '\u2014'],
                                 ['Steps', logs.length.toString()],
                             ].map(([label, value]) => (
                                 <div key={label} className="flex items-center">
@@ -559,7 +591,7 @@ const ProcessDetails = () => {
 
                     <div className="mx-5 border-t border-[#f0f0f0]" />
 
-                    {/* Artifacts — unified: DB + metadata-derived */}
+                    {/* Artifacts */}
                     <div className="px-5 pt-4 pb-5">
                         <div className="flex items-center gap-2 mb-3">
                             <Presentation className="w-3.5 h-3.5 text-[#9CA3AF]" />
@@ -578,9 +610,7 @@ const ProcessDetails = () => {
                                             <FileText className="w-4 h-4 text-[#9CA3AF] group-hover:text-[#666] flex-shrink-0" />
                                         )}
                                         <div className="min-w-0">
-                                            <p className="text-[12px] font-medium text-[#171717] truncate">
-                                                {art.filename}
-                                            </p>
+                                            <p className="text-[12px] font-medium text-[#171717] truncate">{art.filename}</p>
                                             <p className="text-[10px] text-[#9CA3AF]">
                                                 {art._isMetaArtifact ? 'Extracted from log metadata' : (art.file_type || 'file')}
                                             </p>
