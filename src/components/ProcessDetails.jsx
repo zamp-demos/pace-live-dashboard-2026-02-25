@@ -45,6 +45,25 @@ function isLargeData(value) {
     return false;
 }
 
+
+/* --- Split long log messages into summary + detail --- */
+function splitLogMessage(message) {
+    if (!message || typeof message !== 'string') return { summary: message || '', detail: '' };
+    // If short enough, no split needed
+    if (message.length <= 140) return { summary: message, detail: '' };
+    // Try to split at first sentence boundary (period followed by space + capital letter)
+    const sentenceMatch = message.match(/^([^.]+\.\s?)(.+)/s);
+    if (sentenceMatch && sentenceMatch[1].length >= 20 && sentenceMatch[1].length <= 200) {
+        return { summary: sentenceMatch[1].trim(), detail: sentenceMatch[2].trim() };
+    }
+    // Fallback: truncate at ~120 chars on word boundary
+    const truncAt = message.lastIndexOf(' ', 120);
+    if (truncAt > 40) {
+        return { summary: message.slice(0, truncAt) + '...', detail: message };
+    }
+    return { summary: message.slice(0, 120) + '...', detail: message };
+}
+
 function classifyMetadata(metadata) {
     if (!metadata || typeof metadata !== 'object') return { reasoning: {}, dataArtifacts: [] };
 
@@ -115,10 +134,10 @@ const formatFieldKey = (key) => {
 };
 
 /* ─── CollapsibleReasoning ─── */
-const CollapsibleReasoning = ({ reasoning }) => {
+const CollapsibleReasoning = ({ reasoning, messageDetail }) => {
     const [isOpen, setIsOpen] = useState(false);
     const entries = Object.entries(reasoning || {});
-    if (entries.length === 0) return null;
+    if (entries.length === 0 && !messageDetail) return null;
 
     const formatValue = (val) => {
         if (val === true) return 'Yes';
@@ -154,6 +173,9 @@ const CollapsibleReasoning = ({ reasoning }) => {
             </button>
             {isOpen && (
                 <div className="mt-2 bg-[#fafafa] border border-[#f0f0f0] rounded-md p-3 space-y-1.5">
+                    {messageDetail && (
+                        <p className="text-[11px] text-[#555] leading-relaxed mb-2 whitespace-pre-wrap">{messageDetail}</p>
+                    )}
                     {entries.map(([key, val]) => (
                         <div key={key} className="flex items-baseline gap-2 text-[11px]">
                             <span className="text-[#9CA3AF] min-w-[100px] flex-shrink-0">{formatFieldKey(key)}</span>
@@ -495,7 +517,7 @@ const ProcessDetails = () => {
                                                 </span>
                                             </div>
                                             <p className="text-[12px] text-[#666] mt-0.5 leading-relaxed">
-                                                {log.message}
+                                                {splitLogMessage(log.message).summary}
                                             </p>
                                             {dbArtifactsForLog.length > 0 && (
                                                 <div className="flex flex-wrap gap-2 mt-2">
@@ -519,7 +541,7 @@ const ProcessDetails = () => {
                                                     ))}
                                                 </div>
                                             )}
-                                            <CollapsibleReasoning reasoning={classified.reasoning} />
+                                            <CollapsibleReasoning reasoning={classified.reasoning} messageDetail={splitLogMessage(log.message).detail} />
                                         </div>
                                     </div>
                                 );
