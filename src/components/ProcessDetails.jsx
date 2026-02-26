@@ -1,19 +1,138 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
     Check, Activity, FileText, Clock, ExternalLink, Loader2, X,
     Database, Asterisk, Presentation, Maximize2, ChevronDown, ChevronUp,
-    Download, Sliders, Filter, Layout, LayoutGrid, Menu
+    Download, Sliders, Filter, Layout, LayoutGrid, Menu, Brain
 } from 'lucide-react';
 import { fetchLogs, fetchArtifacts, subscribeToTable } from '../services/supabase';
 import { supabase } from '../services/supabase';
+
+/* ─── Helpers: classify metadata fields ─── */
+const REASONING_KEYS = new Set([
+    'confidence', 'match_score', 'score', 'status', 'result',
+    'reason', 'note', 'validation', 'match_result', 'flag',
+    'accuracy', 'threshold', 'decision', 'outcome', 'verdict',
+    'similarity', 'match_type', 'method', 'model', 'duration_ms'
+]);
+
+const SKIP_KEYS = new Set(['step_name']);
+
+function isLargeData(value) {
+    if (value === null || value === undefined) return false;
+    if (Array.isArray(value)) return value.length > 2;
+    if (typeof value === 'object') {
+        const keys = Object.keys(value);
+        if (keys.length >= 4) return true;
+        // Check if any nested value is itself a non-trivial object
+        return keys.some(k => {
+            const v = value[k];
+            return (typeof v === 'object' && v !== null && Object.keys(v).length >= 2);
+        });
+    }
+    if (typeof value === 'string') return value.length > 300;
+    return false;
+}
+
+function classifyMetadata(metadata) {
+    if (!metadata || typeof metadata !== 'object') return { reasoning: {}, dataArtifacts: [] };
+
+    const reasoning = {};
+    const dataArtifacts = [];
+
+    Object.entries(metadata).forEach(([key, value]) => {
+        if (SKIP_KEYS.has(key)) return;
+
+        if (isLargeData(value)) {
+            // This is a data artifact - extracted data, validation details, etc.
+            const label = key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim();
+            dataArtifacts.push({
+                id: `meta-${key}-${Math.random().toString(36).slice(2, 8)}`,
+                filename: `${label.charAt(0).toUpperCase() + label.slice(1)}`,
+                file_type: 'json',
+                content: value,
+                _isMetaArtifact: true,
+            });
+        } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+            // Small object - flatten into reasoning
+            Object.entries(value).forEach(([subKey, subVal]) => {
+                const flatKey = `${key}.${subKey}`;
+                if (typeof subVal !== 'object' || subVal === null) {
+                    reasoning[flatKey] = subVal;
+                }
+            });
+        } else {
+            reasoning[key] = value;
+        }
+    });
+
+    return { reasoning, dataArtifacts };
+}
+
+/* ─── CollapsibleReasoning ─── */
+const CollapsibleReasoning = ({ reasoning }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const entries = Object.entries(reasoning || {});
+    if (entries.length === 0) return null;
+
+    const formatKey = (key) => {
+        let display = key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').replace(/\./g, ' > ').trim();
+        return display.charAt(0).toUpperCase() + display.slice(1);
+    };
+
+    const formatValue = (val) => {
+        if (val === true) return 'Yes';
+        if (val === false) return 'No';
+        if (val === null || val === undefined) return '—';
+        return String(val);
+    };
+
+    const getValueColor = (key, val) => {
+        const s = String(val).toLowerCase();
+        if (s === 'pass' || s === 'passed' || s === 'true' || s === 'yes' || s === 'success' || s === 'matched') return 'text-[#038408]';
+        if (s === 'fail' || s === 'failed' || s === 'false' || s === 'no' || s === 'error' || s.includes('critical') || s.includes('mismatch')) return 'text-[#A40000]';
+        if (key.includes('confidence') || key.includes('score') || key.includes('similarity') || key.includes('accuracy')) {
+            const num = parseFloat(val);
+            if (!isNaN(num)) {
+                if (num >= 0.9 || num >= 90) return 'text-[#038408]';
+                if (num >= 0.7 || num >= 70) return 'text-[#ED6704]';
+                return 'text-[#A40000]';
+            }
+        }
+        return 'text-[#171717]';
+    };
+
+    return (
+        <div className="mt-2">
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="flex items-center gap-1.5 text-[10px] text-[#9CA3AF] hover:text-[#666] transition-colors"
+            >
+                <Brain className="w-3 h-3" />
+                {isOpen ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
+                <span>Reasoning</span>
+            </button>
+            {isOpen && (
+                <div className="mt-2 bg-[#fafafa] border border-[#f0f0f0] rounded-md p-3 space-y-1.5">
+                    {entries.map(([key, val]) => (
+                        <div key={key} className="flex items-baseline gap-2 text-[11px]">
+                            <span className="text-[#9CA3AF] min-w-[100px] flex-shrink-0">{formatKey(key)}</span>
+                            <span className={`font-medium ${getValueColor(key, val)}`}>
+                                {formatValue(val)}
+                            </span>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
 
 /* ─── DatasetViewer ─── */
 const DatasetViewer = ({ artifact, onClose }) => {
     const [viewMode, setViewMode] = useState('list');
 
-    // Parse artifact data - could be JSON string, object, or array
-    const parsedData = React.useMemo(() => {
+    const parsedData = useMemo(() => {
         if (!artifact) return {};
         let raw = artifact.content || artifact.data;
         if (typeof raw === 'string') {
@@ -26,16 +145,19 @@ const DatasetViewer = ({ artifact, onClose }) => {
 
     const isTableData = Array.isArray(parsedData);
 
-    // For object data, flatten nested values to strings
-    const flatData = React.useMemo(() => {
+    const flatData = useMemo(() => {
         if (isTableData) return parsedData;
         const flat = {};
-        Object.entries(parsedData).forEach(([k, v]) => {
-            if (v === null || v === undefined) flat[k] = '';
-            else if (Array.isArray(v)) flat[k] = v.map(item => typeof item === 'object' ? JSON.stringify(item) : item).join(', ');
-            else if (typeof v === 'object') flat[k] = JSON.stringify(v);
-            else flat[k] = v.toString();
-        });
+        const flatten = (obj, prefix = '') => {
+            Object.entries(obj).forEach(([k, v]) => {
+                const key = prefix ? `${prefix} > ${k}` : k;
+                if (v === null || v === undefined) flat[key] = '';
+                else if (Array.isArray(v)) flat[key] = v.map(item => typeof item === 'object' ? JSON.stringify(item) : item).join(', ');
+                else if (typeof v === 'object') flatten(v, key);
+                else flat[key] = v.toString();
+            });
+        };
+        flatten(parsedData);
         return flat;
     }, [parsedData, isTableData]);
 
@@ -75,18 +197,12 @@ const DatasetViewer = ({ artifact, onClose }) => {
                         <Sliders className="w-4 h-4 cursor-pointer hover:text-gray-600 transition-colors" />
                         <ExternalLink className="w-4 h-4 cursor-pointer hover:text-gray-600 transition-colors" />
                         <div className="flex items-center border border-gray-200 rounded-[6px] p-0.5 bg-gray-50/50">
-                            <button
-                                onClick={() => setViewMode('list')}
-                                title="List View"
-                                className={`p-1 rounded-[4px] transition-all ${viewMode === 'list' ? 'bg-white border border-gray-200 shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
-                            >
+                            <button onClick={() => setViewMode('list')} title="List View"
+                                className={`p-1 rounded-[4px] transition-all ${viewMode === 'list' ? 'bg-white border border-gray-200 shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
                                 <Layout className="w-3.5 h-3.5" />
                             </button>
-                            <button
-                                onClick={() => setViewMode('table')}
-                                title="Table View"
-                                className={`p-1 rounded-[4px] transition-all ${viewMode === 'table' ? 'bg-white border border-gray-200 shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
-                            >
+                            <button onClick={() => setViewMode('table')} title="Table View"
+                                className={`p-1 rounded-[4px] transition-all ${viewMode === 'table' ? 'bg-white border border-gray-200 shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
                                 <LayoutGrid className="w-3.5 h-3.5" />
                             </button>
                         </div>
@@ -113,17 +229,15 @@ const DatasetViewer = ({ artifact, onClose }) => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100 bg-white">
-                                {isTableData ? (
-                                    parsedData.map((row, i) => (
-                                        <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                                            {Object.values(row).map((val, j) => (
-                                                <td key={j} className="px-4 py-2 text-[11px] text-black border-r border-gray-100 whitespace-nowrap overflow-hidden text-ellipsis">
-                                                    {val?.toString() || '\u2014'}
-                                                </td>
-                                            ))}
-                                        </tr>
-                                    ))
-                                ) : (
+                                {isTableData ? parsedData.map((row, i) => (
+                                    <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                                        {Object.values(row).map((val, j) => (
+                                            <td key={j} className="px-4 py-2 text-[11px] text-black border-r border-gray-100 whitespace-nowrap overflow-hidden text-ellipsis">
+                                                {val?.toString() || '\u2014'}
+                                            </td>
+                                        ))}
+                                    </tr>
+                                )) : (
                                     <tr className="hover:bg-gray-50/50 transition-colors">
                                         {Object.values(flatData).map((val, j) => (
                                             <td key={j} className="px-4 py-2 text-[11px] text-black border-r border-gray-100 whitespace-nowrap overflow-hidden text-ellipsis">
@@ -156,32 +270,6 @@ const DatasetViewer = ({ artifact, onClose }) => {
     );
 };
 
-/* ─── CollapsibleMetadata ─── */
-const CollapsibleMetadata = ({ metadata }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const filtered = Object.fromEntries(
-        Object.entries(metadata || {}).filter(([k]) => k !== 'step_name')
-    );
-    if (Object.keys(filtered).length === 0) return null;
-
-    return (
-        <div className="mt-2">
-            <button
-                onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center gap-1 text-[10px] text-[#9CA3AF] hover:text-[#666] transition-colors"
-            >
-                {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                <span>{isOpen ? 'Hide' : 'Show'} details</span>
-            </button>
-            {isOpen && (
-                <pre className="mt-1.5 text-[11px] text-[#8f8f8f] bg-[#fafafa] border border-[#f0f0f0] rounded-md p-2 overflow-x-auto whitespace-pre-wrap">
-                    {JSON.stringify(filtered, null, 2)}
-                </pre>
-            )}
-        </div>
-    );
-};
-
 /* ─── ProcessDetails ─── */
 const ProcessDetails = () => {
     const { runId } = useParams();
@@ -193,7 +281,7 @@ const ProcessDetails = () => {
     const [isResizing, setIsResizing] = useState(false);
     const logsEndRef = useRef(null);
 
-    // Data loading
+    // Data loading + realtime subscriptions
     useEffect(() => {
         if (!runId) return;
 
@@ -220,12 +308,11 @@ const ProcessDetails = () => {
         return () => { unsubLogs(); unsubArtifacts(); unsubRun(); };
     }, [runId]);
 
-    // Auto-scroll to latest log
     useEffect(() => {
         logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [logs]);
 
-    // Resize handling
+    // Resize
     useEffect(() => {
         if (!isResizing) return;
         const handleMouseMove = (e) => {
@@ -235,11 +322,28 @@ const ProcessDetails = () => {
         const handleMouseUp = () => setIsResizing(false);
         window.addEventListener('mousemove', handleMouseMove);
         window.addEventListener('mouseup', handleMouseUp);
-        return () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
-        };
+        return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
     }, [isResizing]);
+
+    // Classify all log metadata into reasoning + data artifacts
+    const logMetaClassified = useMemo(() => {
+        const map = {};
+        logs.forEach(log => {
+            map[log.id] = classifyMetadata(log.metadata);
+        });
+        return map;
+    }, [logs]);
+
+    // Collect ALL data artifacts: from artifacts table + from metadata
+    const allArtifacts = useMemo(() => {
+        const combined = [...artifacts];
+        Object.values(logMetaClassified).forEach(({ dataArtifacts }) => {
+            dataArtifacts.forEach(da => {
+                if (!combined.some(a => a.id === da.id)) combined.push(da);
+            });
+        });
+        return combined;
+    }, [artifacts, logMetaClassified]);
 
     const formatTime = (ts) => {
         if (!ts) return '';
@@ -253,27 +357,28 @@ const ProcessDetails = () => {
 
     const getStepName = (log) => log.metadata?.step_name || `Step ${log.step_number}`;
 
-    const getLogStatus = (logType) => {
-        switch (logType) {
-            case 'complete': return 'complete';
-            case 'error': return 'error';
-            default: return 'in-progress';
+    // FIX: Icon status based on position in timeline + run status
+    const getIconStatus = (log, index) => {
+        if (log.log_type === 'error') return 'error';
+        if (log.log_type === 'complete') return 'complete';
+
+        const isLast = index === logs.length - 1;
+
+        if (!isLast) {
+            // Not the last step — it finished, so it's done
+            return 'complete';
         }
+
+        // Last step — depends on run status
+        if (!run) return 'in-progress';
+        if (run.status === 'done') return 'complete';
+        if (run.status === 'needs_attention' || run.status === 'needs_review') return 'error';
+        return 'in-progress'; // ready, in_progress
     };
 
-    const getStatusBadge = (status) => {
-        switch (status) {
-            case 'done': return { bg: 'bg-[#E2F1EB]', text: 'text-[#038408]' };
-            case 'in_progress': case 'ready': return { bg: 'bg-[#EAF3FF]', text: 'text-[#2546F5]' };
-            case 'needs_attention': return { bg: 'bg-[#FFDADA]', text: 'text-[#A40000]' };
-            case 'needs_review': return { bg: 'bg-[#FCEDB9]', text: 'text-[#ED6704]' };
-            default: return { bg: 'bg-[#EBEBEB]', text: 'text-[#8F8F8F]' };
-        }
-    };
-
-    // Check if an artifact has viewable JSON data
     const isViewableArtifact = (art) => {
         if (art.content) return true;
+        if (art._isMetaArtifact) return true;
         if (art.file_type === 'application/json' || art.file_type === 'json') return true;
         return false;
     };
@@ -288,272 +393,205 @@ const ProcessDetails = () => {
 
     const closeArtifactPanel = () => setSelectedArtifact(null);
 
-    // Map artifact log entries to their artifacts
-    const getArtifactsForLog = (log) => {
+    // Match DB artifacts to artifact-type logs
+    const getDbArtifactsForLog = (log) => {
         if (log.log_type !== 'artifact') return [];
-        // Match by step_number or by artifact filename mentioned in log message
         return artifacts.filter(a =>
             log.message?.includes(a.filename) ||
             (log.metadata?.artifact_id && log.metadata.artifact_id === a.id)
         );
     };
 
-    const statusBadge = run ? getStatusBadge(run.status) : {};
-
+    /* ─── JSX Return ─── */
     return (
-        <div className="flex h-full bg-white">
-            {/* Left Pane */}
-            <div
-                className="flex flex-col overflow-hidden border-r border-[#f0f0f0]"
-                style={{ width: selectedArtifact ? `calc(100% - ${artifactWidth}px)` : '100%' }}
-            >
-                {/* Run Header */}
-                {run && (
-                    <div className="flex items-center justify-between px-6 py-3 border-b border-[#f0f0f0]">
-                        <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs text-gray-500">Run #</span>
-                                <span className="font-semibold text-xs">{run.name || runId?.slice(0, 8)}</span>
-                            </div>
-                            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs border border-[#f0f0f0] bg-white">
-                                {run.status === 'done' ? (
-                                    <Check className="h-3 w-3 text-[#0b821a]" strokeWidth={2.5} />
-                                ) : run.status === 'needs_attention' || run.status === 'needs_review' ? (
-                                    <Activity className="h-3 w-3 text-[#ff1515]" strokeWidth={2} />
-                                ) : (
-                                    <Loader2 className="h-3 w-3 text-[#2445ff] animate-spin" />
-                                )}
-                                <span className="font-medium text-black">
-                                    {run.status?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
-                                </span>
-                            </div>
+        <div className="flex h-full bg-white overflow-hidden">
+            {/* Main content */}
+            <div className={`flex-1 flex flex-col min-w-0 transition-all duration-200 ${selectedArtifact ? '' : 'mr-[400px]'}`}>
+                {/* Header */}
+                <div className="flex-shrink-0 px-6 py-5 border-b border-[#f0f0f0] bg-white">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h2 className="text-[16px] font-semibold text-[#171717]">
+                                Run: {runId?.slice(0, 8)}
+                            </h2>
+                            <p className="text-[12px] text-[#9CA3AF] mt-1">
+                                {run && `${run.status} \u2022 Started ${formatDate(run.started_at)}`}
+                            </p>
                         </div>
-                        {run.document_name && (
-                            <span className="text-[12px] text-[#8f8f8f]">{run.document_name}</span>
+                        {run?.status && (
+                            <span className={`text-[11px] font-medium px-2.5 py-1 rounded-full ${
+                                run.status === 'done' ? 'bg-[#E6F3EA] text-[#038408]' :
+                                run.status === 'in_progress' ? 'bg-[#DADAFF] text-[#0000A4]' :
+                                run.status === 'needs_attention' || run.status === 'needs_review' ? 'bg-[#FFDADA] text-[#A40000]' :
+                                'bg-[#f2f2f2] text-[#666]'
+                            }`}>
+                                {run.status.replace(/_/g, ' ')}
+                            </span>
                         )}
                     </div>
-                )}
+                </div>
 
-                {/* Activity Timeline */}
-                <div className="flex-1 overflow-y-auto">
-                    {/* Today Divider */}
-                    <div className="flex items-center py-6 px-8">
-                        <div className="flex-grow border-t border-gray-200"></div>
-                        <span className="flex-shrink mx-4 text-xs text-gray-500 font-medium">
-                            {run ? formatDate(run.created_at) : 'Today'}
-                        </span>
-                        <div className="flex-grow border-t border-gray-200"></div>
-                    </div>
-
+                {/* Timeline */}
+                <div className="flex-1 overflow-y-auto px-8 py-6 custom-scrollbar">
                     {logs.length === 0 ? (
-                        <div className="text-center py-12">
-                            <div className="text-[13px] text-[#8f8f8f]">Waiting for activity...</div>
-                            <div className="text-[12px] text-[#cacaca] mt-1">Logs will stream here in real-time</div>
+                        <div className="flex flex-col items-center justify-center h-full text-center">
+                            <div className="w-10 h-10 border border-[#f0f0f0] rounded-lg flex items-center justify-center mb-3">
+                                <Activity className="w-5 h-5 text-[#9CA3AF]" />
+                            </div>
+                            <p className="text-sm text-[#666]">No activity logs yet</p>
+                            <p className="text-xs text-[#9CA3AF] mt-1">Logs will appear here as the run progresses</p>
                         </div>
                     ) : (
-                        <div className="px-8 pb-8">
-                            <div className="max-w-3xl">
-                                {logs.map((log, index) => {
-                                    const isLastItem = index === logs.length - 1;
-                                    const status = getLogStatus(log.log_type);
-                                    const logArtifacts = getArtifactsForLog(log);
+                        <div className="relative">
+                            {logs.map((log, index) => {
+                                const status = getIconStatus(log, index);
+                                const isLastItem = index === logs.length - 1;
+                                const classified = logMetaClassified[log.id] || { reasoning: {}, dataArtifacts: [] };
+                                const dbArtifactsForLog = getDbArtifactsForLog(log);
+                                const logDataArtifacts = classified.dataArtifacts;
 
-                                    return (
-                                        <div key={log.id} className="relative flex gap-4">
-                                            {/* Time */}
-                                            <div className="w-20 flex-shrink-0 text-right pt-[8.5px]">
-                                                <span className="text-[11px] text-[#9CA3AF] font-medium tabular-nums leading-[13px] block">
+                                return (
+                                    <div key={log.id} className="flex gap-4 pb-6 relative">
+                                        {/* Timeline track */}
+                                        <div className="flex flex-col items-center w-[11px] flex-shrink-0 pt-[4px]">
+                                            {/* Icon */}
+                                            <div className={`w-[11px] h-[11px] rounded-[2px] border flex-shrink-0 ${
+                                                status === 'complete'
+                                                    ? 'bg-[#E6F3EA] border-[#66B280]'
+                                                    : status === 'error'
+                                                    ? 'bg-[#FFDADA] border-[#A40000]'
+                                                    : 'bg-[#DADAFF] border-[#0000A4] animate-square-to-diamond'
+                                            }`} />
+                                            {/* Connector */}
+                                            {!isLastItem && (
+                                                <div className="w-[1px] bg-[#E5E7EB] flex-1 min-h-[20px] mt-1" />
+                                            )}
+                                        </div>
+
+                                        {/* Content */}
+                                        <div className="flex-1 min-w-0 pb-2">
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="text-[13px] font-medium text-[#171717]">
+                                                    {getStepName(log)}
+                                                </span>
+                                                <span className="text-[10px] text-[#9CA3AF]">
                                                     {formatTime(log.created_at)}
                                                 </span>
                                             </div>
+                                            <p className="text-[12px] text-[#666] mt-0.5 leading-relaxed">
+                                                {log.message}
+                                            </p>
 
-                                            {/* Timeline Icon */}
-                                            <div className="relative flex flex-col items-center w-5 self-stretch">
-                                                {(!isLastItem || index > 0) && (
-                                                    <div
-                                                        className={`absolute w-[1px] bg-[#E5E7EB] left-1/2 -translate-x-1/2 
-                                                            ${index === 0 ? 'top-[15px]' : 'top-0'} 
-                                                            ${isLastItem ? 'h-[15px]' : 'bottom-0'}`}
-                                                    ></div>
-                                                )}
-                                                <div className="relative z-10 bg-white py-[9.5px]">
-                                                    <div
-                                                        className={`w-[11px] h-[11px] border transition-all duration-300 ${
-                                                            status === 'error' ? 'bg-[#FFDADA] border-[#A40000] rounded-[2px]' :
-                                                            status === 'complete' ? 'bg-[#E6F3EA] border-[#66B280] rounded-[2px]' :
-                                                            'bg-[#DADAFF] border-[#0000A4] animate-square-to-diamond'
-                                                        }`}
-                                                    />
+                                            {/* DB Artifact buttons */}
+                                            {dbArtifactsForLog.length > 0 && (
+                                                <div className="flex flex-wrap gap-2 mt-2">
+                                                    {dbArtifactsForLog.map(art => (
+                                                        <button key={art.id} onClick={() => handleArtifactClick(art)}
+                                                            className="bg-[#f2f2f2] hover:bg-gray-200 rounded-[6px] px-2 py-1 flex items-center gap-1.5 transition-colors">
+                                                            <FileText className="h-3.5 w-3.5 text-[#666]" strokeWidth={1.5} />
+                                                            <span className="text-xs font-normal text-black">{art.filename}</span>
+                                                        </button>
+                                                    ))}
                                                 </div>
-                                            </div>
+                                            )}
 
-                                            {/* Content */}
-                                            <div className="flex-1 min-w-0 pt-[8.5px] pb-10">
-                                                <h3 className="text-[13px] font-medium text-gray-900 mb-1 leading-[13px]">
-                                                    {getStepName(log)}
-                                                </h3>
-                                                <p className="text-[12px] text-[#666] leading-relaxed mb-2">
-                                                    {log.message}
-                                                </p>
+                                            {/* Metadata data artifact buttons */}
+                                            {logDataArtifacts.length > 0 && (
+                                                <div className="flex flex-wrap gap-2 mt-2">
+                                                    {logDataArtifacts.map(da => (
+                                                        <button key={da.id} onClick={() => setSelectedArtifact(da)}
+                                                            className="bg-[#f2f2f2] hover:bg-gray-200 rounded-[6px] px-2 py-1 flex items-center gap-1.5 transition-colors">
+                                                            <Database className="h-3.5 w-3.5 text-[#666]" strokeWidth={1.5} />
+                                                            <span className="text-xs font-normal text-black">{da.filename}</span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
 
-                                                {/* Collapsible metadata */}
-                                                <CollapsibleMetadata metadata={log.metadata} />
-
-                                                {/* Inline artifact buttons for artifact-type logs */}
-                                                {logArtifacts.length > 0 && (
-                                                    <div className="flex flex-wrap gap-2 mt-3">
-                                                        {logArtifacts.map((art) => (
-                                                            <button
-                                                                key={art.id}
-                                                                onClick={() => handleArtifactClick(art)}
-                                                                className="inline-flex items-center gap-2 bg-[#f2f2f2] hover:bg-gray-200 rounded-[6px] px-2 py-1 transition-all text-left border-none"
-                                                            >
-                                                                <FileText className="h-3.5 w-3.5 flex-shrink-0 text-black" strokeWidth={1.5} />
-                                                                <span className="text-xs font-normal text-black">{art.filename}</span>
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                )}
-
-                                                {/* For artifact logs with no matched artifact, show a generic link */}
-                                                {log.log_type === 'artifact' && logArtifacts.length === 0 && artifacts.length > 0 && (
-                                                    <div className="flex flex-wrap gap-2 mt-3">
-                                                        {artifacts.map((art) => (
-                                                            <button
-                                                                key={art.id}
-                                                                onClick={() => handleArtifactClick(art)}
-                                                                className="inline-flex items-center gap-2 bg-[#f2f2f2] hover:bg-gray-200 rounded-[6px] px-2 py-1 transition-all text-left border-none"
-                                                            >
-                                                                <FileText className="h-3.5 w-3.5 flex-shrink-0 text-black" strokeWidth={1.5} />
-                                                                <span className="text-xs font-normal text-black">{art.filename}</span>
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
+                                            {/* Reasoning collapsible */}
+                                            <CollapsibleReasoning reasoning={classified.reasoning} />
                                         </div>
-                                    );
-                                })}
-                            </div>
+                                    </div>
+                                );
+                            })}
                             <div ref={logsEndRef} />
                         </div>
                     )}
                 </div>
             </div>
 
-            {/* Right Pane - Artifact Viewer (when selected) */}
-            {selectedArtifact && (
-                <div className="flex flex-1 h-full overflow-hidden relative">
-                    {/* Resize Handle */}
-                    <div
-                        className="absolute left-0 top-0 w-1 h-full cursor-col-resize z-50 group hover:bg-black/5 transition-colors"
-                        onMouseDown={(e) => { e.preventDefault(); setIsResizing(true); }}
-                    >
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[4px] h-12 bg-gray-200 rounded-full group-hover:bg-gray-400 group-active:bg-gray-600 transition-colors border border-white shadow-sm"></div>
-                    </div>
-
-                    <div
-                        className="h-full border-l border-[#f0f0f0] bg-white flex flex-1 overflow-hidden"
-                        style={{ width: `${artifactWidth}px` }}
-                    >
+            {/* Right Sidebar: Key Details OR Artifact Viewer */}
+            {selectedArtifact ? (
+                <>
+                    <div className="w-1 cursor-col-resize hover:bg-blue-200 active:bg-blue-300 transition-colors flex-shrink-0"
+                        onMouseDown={() => setIsResizing(true)} />
+                    <div style={{ width: artifactWidth }} className="flex-shrink-0 border-l border-[#f0f0f0]">
                         <DatasetViewer artifact={selectedArtifact} onClose={closeArtifactPanel} />
                     </div>
-                </div>
-            )}
+                </>
+            ) : (
+                <div className="w-[400px] flex-shrink-0 border-l border-[#f0f0f0] bg-white overflow-y-auto custom-scrollbar">
+                    <div className="px-5 pt-5 pb-3">
+                        <h3 className="text-[13px] font-semibold text-[#171717] mb-1">Key Details</h3>
+                    </div>
 
-            {/* Right Sidebar - Key Details (hidden when artifact selected) */}
-            {!selectedArtifact && (
-                <aside className="w-[400px] border-l border-[#f0f0f0] bg-white overflow-y-auto flex flex-col">
-                    <div className="p-5">
-                        {/* Header */}
-                        <div className="flex items-center justify-between mb-5">
-                            <h2 className="text-[13px] font-[550] text-[#171717] flex items-center gap-2">
-                                <Asterisk className="h-4 w-4 text-[#171717]" />
-                                Key Details
-                            </h2>
-                            <button className="p-1 hover:bg-gray-100 rounded">
-                                <Maximize2 className="h-3.5 w-3.5 text-[#8f8f8f]" />
-                            </button>
+                    {/* Run Details */}
+                    <div className="px-5 pb-4">
+                        <div className="flex items-center gap-2 mb-3">
+                            <Database className="w-3.5 h-3.5 text-[#9CA3AF]" />
+                            <span className="text-[11px] font-medium text-[#9CA3AF] uppercase tracking-wider">Run Details</span>
                         </div>
-
-                        {/* Case Details Section */}
-                        {run && (
-                            <div className="mb-5">
-                                <div className="flex items-center gap-1.5 mb-3">
-                                    <Database className="h-3 w-3 text-[#171717]" />
-                                    <h3 className="text-[13px] font-[550] text-[#171717]">Run Details</h3>
+                        <div className="space-y-2.5">
+                            {[
+                                ['Run ID', runId?.slice(0, 8)],
+                                ['Status', run?.status?.replace(/_/g, ' ')],
+                                ['Started', run?.started_at ? formatDate(run.started_at) + ' ' + formatTime(run.started_at) : '—'],
+                                ['Completed', run?.completed_at ? formatDate(run.completed_at) + ' ' + formatTime(run.completed_at) : '—'],
+                                ['Steps', logs.length.toString()],
+                            ].map(([label, value]) => (
+                                <div key={label} className="flex items-center">
+                                    <span className="text-[12px] text-gray-500 w-[120px] flex-shrink-0">{label}</span>
+                                    <span className="text-[12px] text-gray-900 font-medium">{value || '\u2014'}</span>
                                 </div>
-                                <div className="space-y-2.5 text-xs text-center">
-                                    <div className="flex justify-center">
-                                        <span className="text-gray-500 w-[120px] text-left pr-4">Run #</span>
-                                        <span className="text-gray-900 font-medium w-[120px] text-left truncate">
-                                            {runId?.slice(0, 8)}
-                                        </span>
-                                    </div>
-                                    {run.name && (
-                                        <div className="flex justify-center">
-                                            <span className="text-gray-500 w-[120px] text-left pr-4">Name</span>
-                                            <span className="text-gray-900 font-medium w-[120px] text-left truncate">{run.name}</span>
-                                        </div>
-                                    )}
-                                    {run.document_name && (
-                                        <div className="flex justify-center">
-                                            <span className="text-gray-500 w-[120px] text-left pr-4">Document</span>
-                                            <span className="text-gray-900 font-medium w-[120px] text-left truncate">{run.document_name}</span>
-                                        </div>
-                                    )}
-                                    <div className="flex justify-center">
-                                        <span className="text-gray-500 w-[120px] text-left pr-4">Status</span>
-                                        <span className="text-gray-900 font-medium w-[120px] text-left">
-                                            {run.status?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-center">
-                                        <span className="text-gray-500 w-[120px] text-left pr-4">Started</span>
-                                        <span className="text-gray-900 font-medium w-[120px] text-left">{formatDate(run.created_at)}</span>
-                                    </div>
-                                    {run.current_status_text && (
-                                        <div className="flex justify-center">
-                                            <span className="text-gray-500 w-[120px] text-left pr-4">Status Text</span>
-                                            <span className="text-gray-900 font-medium w-[120px] text-left truncate">{run.current_status_text}</span>
-                                        </div>
-                                    )}
-                                    <div className="flex justify-center">
-                                        <span className="text-gray-500 w-[120px] text-left pr-4">Steps</span>
-                                        <span className="text-gray-900 font-medium w-[120px] text-left">{logs.length}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
+                            ))}
+                        </div>
+                    </div>
 
-                        {/* Divider */}
-                        <div className="border-t border-[#f0f0f0] -mx-5 my-5"></div>
+                    <div className="mx-5 border-t border-[#f0f0f0]" />
 
-                        {/* Artifacts Section */}
-                        <div>
-                            <h3 className="text-[13px] font-[550] text-[#171717] mb-3 flex items-center gap-2">
-                                <Presentation className="h-4 w-4 text-[#171717]" />
-                                Artifacts
-                            </h3>
-                            <div className="flex flex-col gap-2 items-start">
-                                {artifacts.length === 0 && (
-                                    <span className="text-xs text-gray-400 italic">No artifacts generated yet.</span>
-                                )}
-                                {artifacts.map((art) => (
-                                    <button
-                                        key={art.id}
-                                        onClick={() => handleArtifactClick(art)}
-                                        className="inline-flex items-center gap-2 bg-[#f2f2f2] hover:bg-gray-200 rounded-[6px] px-2 py-1 transition-all text-left border-none"
-                                    >
-                                        <FileText className="h-3.5 w-3.5 flex-shrink-0 text-black" strokeWidth={1.5} />
-                                        <span className="text-xs font-normal text-black">{art.filename}</span>
-                                        {art.url && <ExternalLink className="h-2.5 w-2.5 text-[#8f8f8f]" />}
+                    {/* Artifacts — unified: DB + metadata-derived */}
+                    <div className="px-5 pt-4 pb-5">
+                        <div className="flex items-center gap-2 mb-3">
+                            <Presentation className="w-3.5 h-3.5 text-[#9CA3AF]" />
+                            <span className="text-[11px] font-medium text-[#9CA3AF] uppercase tracking-wider">Artifacts</span>
+                        </div>
+                        {allArtifacts.length === 0 ? (
+                            <p className="text-[12px] text-[#9CA3AF]">No artifacts generated</p>
+                        ) : (
+                            <div className="space-y-1.5">
+                                {allArtifacts.map(art => (
+                                    <button key={art.id} onClick={() => handleArtifactClick(art)}
+                                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[#f9fafb] transition-colors text-left group">
+                                        {art._isMetaArtifact ? (
+                                            <Database className="w-4 h-4 text-[#9CA3AF] group-hover:text-[#666] flex-shrink-0" />
+                                        ) : (
+                                            <FileText className="w-4 h-4 text-[#9CA3AF] group-hover:text-[#666] flex-shrink-0" />
+                                        )}
+                                        <div className="min-w-0">
+                                            <p className="text-[12px] font-medium text-[#171717] truncate">
+                                                {art.filename}
+                                            </p>
+                                            <p className="text-[10px] text-[#9CA3AF]">
+                                                {art._isMetaArtifact ? 'Extracted from log metadata' : (art.file_type || 'file')}
+                                            </p>
+                                        </div>
+                                        <ExternalLink className="w-3.5 h-3.5 text-[#d1d5db] group-hover:text-[#9CA3AF] ml-auto flex-shrink-0" />
                                     </button>
                                 ))}
                             </div>
-                        </div>
+                        )}
                     </div>
-                </aside>
+                </div>
             )}
         </div>
     );
