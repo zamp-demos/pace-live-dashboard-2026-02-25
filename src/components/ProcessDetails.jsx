@@ -166,14 +166,14 @@ const CollapsibleReasoning = ({ reasoning, messageDetail, reasoningSteps }) => {
 
     return (
         <div className="mt-2.5">
-            <div className="border border-[#E5E7EB] rounded-lg overflow-hidden">
-                {/* Toggle row — full-width, grey */}
+            <div className="inline-block border border-[#E5E7EB] rounded-lg overflow-hidden max-w-[480px]">
+                {/* Toggle row — compact width, grey */}
                 <button
                     onClick={() => setIsOpen(!isOpen)}
-                    className="w-full flex items-center justify-between px-3 py-2 text-[12px] text-[#6B7280] hover:bg-[#F9FAFB] transition-colors"
+                    className="w-full flex items-center gap-6 px-3 py-2 text-[12px] text-[#6B7280] hover:bg-[#F9FAFB] transition-colors"
                 >
                     <span className="font-medium">{isOpen ? 'Hide reasoning' : 'See reasoning'}</span>
-                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform flex-shrink-0 ${isOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {/* Expanded content with tree-branch connectors */}
                 {isOpen && (
