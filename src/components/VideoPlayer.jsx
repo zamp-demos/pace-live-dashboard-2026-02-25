@@ -1,17 +1,43 @@
-import React, { useState, useRef } from 'react';
-import { X, Download, ExternalLink, Maximize2, Minimize2, Play } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { X, Download, ExternalLink, Maximize2, Minimize2, Play, Loader2 } from 'lucide-react';
+import { getRecordingUrl } from '../services/supabase';
 
 const VideoPlayer = ({ recording, onClose }) => {
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [hasError, setHasError] = useState(false);
+    const [videoUrl, setVideoUrl] = useState(null);
+    const [isLoading, setIsLoading] = useState(false);
     const videoRef = useRef(null);
 
-    const videoUrl = recording?.s3_url;
     const title = recording?.metadata?.filename
         || (recording?.session_id ? `Recording ${recording.session_id.slice(0, 8)}` : 'Browser Recording');
     const subtitle = recording?.step_number != null
         ? `Step ${recording.step_number} \u2022 ${recording.status || 'available'}`
         : recording?.status || '';
+
+    // Fetch fresh pre-signed URL on-demand when recording changes
+    useEffect(() => {
+        setVideoUrl(null);
+        setHasError(false);
+        setIsLoading(false);
+
+        if (!recording?.s3_key || recording?.status === 'pending') return;
+
+        let cancelled = false;
+        setIsLoading(true);
+
+        getRecordingUrl(recording.s3_key).then((url) => {
+            if (cancelled) return;
+            if (url) {
+                setVideoUrl(url);
+            } else {
+                setHasError(true);
+            }
+            setIsLoading(false);
+        });
+
+        return () => { cancelled = true; };
+    }, [recording?.s3_key, recording?.status]);
 
     const handleDownload = () => {
         if (!videoUrl) return;
@@ -31,19 +57,23 @@ const VideoPlayer = ({ recording, onClose }) => {
 
     const renderVideo = (className = '') => (
         <div className={`flex items-center justify-center bg-black ${className}`}>
-            {!videoUrl || recording?.status === 'pending' ? (
+            {recording?.status === 'pending' ? (
                 <div className="flex flex-col items-center gap-3 text-gray-400">
                     <Play className="w-12 h-12" />
                     <p className="text-sm">Recording pending — video will appear once processed</p>
                 </div>
-            ) : hasError ? (
+            ) : isLoading ? (
+                <div className="flex flex-col items-center gap-3 text-gray-400">
+                    <Loader2 className="w-10 h-10 animate-spin" />
+                    <p className="text-sm">Loading video...</p>
+                </div>
+            ) : hasError || !videoUrl ? (
                 <div className="flex flex-col items-center gap-3 text-gray-400">
                     <X className="w-12 h-12" />
                     <p className="text-sm">Unable to load video</p>
-                    <button onClick={handleOpenExternal}
-                        className="text-xs text-indigo-400 hover:text-indigo-300 underline">
-                        Try opening directly
-                    </button>
+                    {recording?.s3_key && (
+                        <p className="text-[10px] text-gray-500 font-mono">{recording.s3_key}</p>
+                    )}
                 </div>
             ) : (
                 <video

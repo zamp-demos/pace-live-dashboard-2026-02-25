@@ -136,6 +136,22 @@ export async function fetchBrowserRecordings(runId) {
     return data || [];
 }
 
+// Generate a fresh pre-signed URL for an S3 recording key (on-demand, 15min expiry)
+export async function getRecordingUrl(s3Key) {
+    try {
+        const resp = await fetch(`/api/recording-url?key=${encodeURIComponent(s3Key)}`);
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.error || `HTTP ${resp.status}`);
+        }
+        const { url } = await resp.json();
+        return url;
+    } catch (err) {
+        console.error('Failed to get recording URL:', err.message);
+        return null;
+    }
+}
+
 // Export dataset rows as JSON (for client-side CSV generation)
 export async function fetchAllDatasetRows(datasetId) {
     const { data, error } = await supabase
