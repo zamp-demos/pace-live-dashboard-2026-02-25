@@ -878,9 +878,10 @@ const ProcessDetails = () => {
                                                     })}
                                                     {metaArtifacts.map(da => (
                                                         <button key={da.id} onClick={() => setSelectedArtifact(da)}
-                                                            className="bg-[#f2f2f2] hover:bg-gray-200 rounded-[6px] px-2 py-1 flex items-center gap-1.5 transition-colors">
+                                                            className="bg-[#f2f2f2] hover:bg-gray-200 rounded-[6px] px-2 py-1 flex items-center gap-1.5 transition-colors group/chip">
                                                             <Database className="h-3.5 w-3.5 text-[#666]" strokeWidth={1.5} />
                                                             <span className="text-xs font-normal text-black">{da.filename}</span>
+                                                            <Eye className="h-3 w-3 text-[#D1D5DB] group-hover/chip:text-[#9CA3AF] flex-shrink-0 ml-0.5" strokeWidth={1.5} />
                                                         </button>
                                                     ))}
                                                     {groupRecordings.map(rec => (
