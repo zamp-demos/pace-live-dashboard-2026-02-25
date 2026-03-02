@@ -166,7 +166,7 @@ const CollapsibleReasoning = ({ reasoning, messageDetail, reasoningSteps }) => {
 
     return (
         <div className="mt-2.5">
-            <div className="inline-block border border-[#E5E7EB] rounded-lg overflow-hidden max-w-[480px]">
+            <div className="w-fit border border-[#E5E7EB] rounded-lg overflow-hidden min-w-[200px] max-w-[480px]">
                 {/* Toggle row — compact width, grey */}
                 <button
                     onClick={() => setIsOpen(!isOpen)}
