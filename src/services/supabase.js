@@ -98,3 +98,37 @@ export async function fetchKnowledgeBase(processId) {
         return data.knowledge_base;
     }
 }
+
+// Fetch datasets for a process
+export async function fetchDatasets(processId) {
+    const { data, error } = await supabase
+        .from('datasets')
+        .select('*')
+        .eq('process_id', processId)
+        .order('created_at', { ascending: true });
+    if (error) throw error;
+    return data || [];
+}
+
+// Fetch rows for a dataset with pagination
+export async function fetchDatasetRows(datasetId, { limit = 100, offset = 0, orderBy = 'created_at', ascending = false } = {}) {
+    const { data, error, count } = await supabase
+        .from('dataset_rows')
+        .select('*, activity_runs!dataset_rows_run_id_fkey(name, status, created_at)', { count: 'exact' })
+        .eq('dataset_id', datasetId)
+        .order(orderBy, { ascending })
+        .range(offset, offset + limit - 1);
+    if (error) throw error;
+    return { rows: data || [], total: count || 0 };
+}
+
+// Export dataset rows as JSON (for client-side CSV generation)
+export async function fetchAllDatasetRows(datasetId) {
+    const { data, error } = await supabase
+        .from('dataset_rows')
+        .select('*')
+        .eq('dataset_id', datasetId)
+        .order('created_at', { ascending: true });
+    if (error) throw error;
+    return data || [];
+}

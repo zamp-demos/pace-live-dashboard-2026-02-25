@@ -6,6 +6,7 @@ import ProcessDetails from './components/ProcessDetails';
 import KnowledgeBase from './components/KnowledgeBase';
 import ChatPanel from './components/ChatPanel';
 import Login from './components/Login';
+import DataExplorer from './components/DataExplorer';
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
           <Route path="processes" element={<ProcessList />} />
           <Route path="knowledge-base" element={<KnowledgeBase />} />
           <Route path="process/:runId" element={<ProcessDetails />} />
+          <Route path="data" element={<DataExplorer />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

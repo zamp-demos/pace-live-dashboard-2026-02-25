@@ -149,7 +149,7 @@ const DashboardLayout = () => {
 
                 <nav className="flex-1 overflow-y-auto px-2 pb-4 space-y-1 mt-2">
                     <div className="pb-4 border-b border-[#f0f0f0]">
-                        <SidebarItem to="/data" icon={<Database />} label="Data" isActive={location.pathname === '/data'} />
+                        <SidebarItem to="/done/data" icon={<Database />} label="Data" isActive={location.pathname === '/done/data'} />
                         <SidebarItem to="/done/people" icon={<Users />} label="People" isActive={location.pathname === '/done/people'} />
                     </div>
 
