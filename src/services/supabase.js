@@ -122,6 +122,20 @@ export async function fetchDatasetRows(datasetId, { limit = 100, offset = 0, ord
     return { rows: data || [], total: count || 0 };
 }
 
+// Fetch browser recordings for a run
+export async function fetchBrowserRecordings(runId) {
+    const { data, error } = await supabase
+        .from('browser_recordings')
+        .select('*')
+        .eq('run_id', runId)
+        .order('step_number', { ascending: true });
+    if (error) {
+        console.warn('browser_recordings fetch error (table may not exist yet):', error.message);
+        return [];
+    }
+    return data || [];
+}
+
 // Export dataset rows as JSON (for client-side CSV generation)
 export async function fetchAllDatasetRows(datasetId) {
     const { data, error } = await supabase

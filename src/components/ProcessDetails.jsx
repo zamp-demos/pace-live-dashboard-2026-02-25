@@ -4,10 +4,12 @@ import {
     Check, Activity, FileText, Clock, ExternalLink, Loader2, X,
     Database, Asterisk, Presentation, Maximize2, ChevronDown, ChevronUp,
     Download, Sliders, Filter, Layout, LayoutGrid, Menu, Brain, Briefcase,
-    Eye, Paperclip, Image, ZoomIn, ZoomOut, RotateCw, ChevronLeft, ChevronRight
+    Eye, Paperclip, Image, ZoomIn, ZoomOut, RotateCw, ChevronLeft, ChevronRight,
+    Play
 } from 'lucide-react';
-import { fetchLogs, fetchArtifacts, subscribeToTable } from '../services/supabase';
+import { fetchLogs, fetchArtifacts, fetchBrowserRecordings, subscribeToTable } from '../services/supabase';
 import { supabase } from '../services/supabase';
+import VideoPlayer from './VideoPlayer';
 
 /* ─── Helpers: classify metadata fields ─── */
 const REASONING_KEYS = new Set([
@@ -481,6 +483,7 @@ const ProcessDetails = () => {
     const [logs, setLogs] = useState([]);
     const [artifacts, setArtifacts] = useState([]);
     const [run, setRun] = useState(null);
+    const [recordings, setRecordings] = useState([]);
     const [selectedArtifact, setSelectedArtifact] = useState(null);
     const [artifactWidth, setArtifactWidth] = useState(550);
     const [isResizing, setIsResizing] = useState(false);
@@ -501,10 +504,15 @@ const ProcessDetails = () => {
             try { setArtifacts(await fetchArtifacts(runId)); } catch (err) { console.error(err); }
         };
         loadArtifacts();
+        const loadRecordings = async () => {
+            try { setRecordings(await fetchBrowserRecordings(runId)); } catch (err) { console.error(err); }
+        };
+        loadRecordings();
         const unsubLogs = subscribeToTable('activity_logs', `run_id=eq.${runId}`, () => loadLogs());
         const unsubArtifacts = subscribeToTable('artifacts', `run_id=eq.${runId}`, () => loadArtifacts());
         const unsubRun = subscribeToTable('activity_runs', `id=eq.${runId}`, () => loadRun());
-        return () => { unsubLogs(); unsubArtifacts(); unsubRun(); };
+        const unsubRecordings = subscribeToTable('browser_recordings', `run_id=eq.${runId}`, () => loadRecordings());
+        return () => { unsubLogs(); unsubArtifacts(); unsubRun(); unsubRecordings(); };
     }, [runId]);
 
     useEffect(() => {
@@ -570,8 +578,14 @@ const ProcessDetails = () => {
         return false;
     };
 
+    const getRecordingForLog = (log) => {
+        return recordings.find(r => r.step_number === log.step_number) || null;
+    };
+
     const handleArtifactClick = (art) => {
-        if (isDocumentFile(art)) {
+        if (art._isVideo) {
+            setSelectedArtifact(art);
+        } else if (isDocumentFile(art)) {
             setSelectedArtifact({ ...art, _isDocument: true });
         } else if (isViewableArtifact(art)) {
             setSelectedArtifact(art);
@@ -707,6 +721,23 @@ const ProcessDetails = () => {
                                                     ))}
                                                 </div>
                                             )}
+                                            {(() => {
+                                                const rec = getRecordingForLog(log);
+                                                if (!rec) return null;
+                                                return (
+                                                    <div className="flex flex-wrap gap-2 mt-2">
+                                                        <button
+                                                            onClick={() => handleArtifactClick({ ...rec, _isVideo: true })}
+                                                            className="bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 rounded-[6px] px-2.5 py-1.5 flex items-center gap-2 transition-colors">
+                                                            <Play className="h-3.5 w-3.5 text-indigo-600 flex-shrink-0" strokeWidth={1.5} />
+                                                            <span className="text-xs font-normal text-black">Browser Recording</span>
+                                                            {rec.status === 'pending' && (
+                                                                <span className="text-[9px] text-indigo-400">(processing)</span>
+                                                            )}
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })()}
                                             <CollapsibleReasoning reasoning={classified.reasoning} messageDetail={splitLogMessage(log.message).detail} />
                                         </div>
                                     </div>
@@ -724,7 +755,9 @@ const ProcessDetails = () => {
                     <div className="w-1 cursor-col-resize hover:bg-blue-200 active:bg-blue-300 transition-colors flex-shrink-0"
                         onMouseDown={() => setIsResizing(true)} />
                     <div style={{ width: artifactWidth }} className="flex-shrink-0 border-l border-[#f0f0f0]">
-                        {selectedArtifact._isDocument ? (
+                        {selectedArtifact._isVideo ? (
+                            <VideoPlayer recording={selectedArtifact} onClose={() => setSelectedArtifact(null)} />
+                        ) : selectedArtifact._isDocument ? (
                             <DocumentPreview artifact={selectedArtifact} onClose={() => setSelectedArtifact(null)} />
                         ) : (
                             <DatasetViewer artifact={selectedArtifact} onClose={() => setSelectedArtifact(null)} />
