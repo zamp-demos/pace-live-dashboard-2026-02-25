@@ -150,64 +150,42 @@ const CollapsibleReasoning = ({ reasoning, messageDetail, reasoningSteps }) => {
         return String(val);
     };
 
-    const getValueColor = (key, val) => {
-        const s = String(val).toLowerCase();
-        if (s === 'pass' || s === 'passed' || s === 'true' || s === 'yes' || s === 'success' || s === 'matched') return 'text-[#038408]';
-        if (s === 'fail' || s === 'failed' || s === 'false' || s === 'no' || s === 'error' || s.includes('critical') || s.includes('mismatch')) return 'text-[#A40000]';
-        if (key.includes('confidence') || key.includes('score') || key.includes('similarity') || key.includes('accuracy')) {
-            const num = parseFloat(val);
-            if (!isNaN(num)) {
-                if (num >= 0.9 || num >= 90) return 'text-[#038408]';
-                if (num >= 0.7 || num >= 70) return 'text-[#ED6704]';
-                return 'text-[#A40000]';
-            }
-        }
-        return 'text-[#171717]';
-    };
-
     return (
         <div className="mt-2.5">
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center gap-1.5 text-[11px] text-[#8B5CF6] hover:text-[#7C3AED] transition-colors font-medium"
+                className="inline-flex items-center gap-1.5 text-[11px] text-[#038408] border border-[#038408]/30 rounded px-2 py-0.5 hover:bg-[#038408]/5 transition-colors font-medium"
             >
-                <Brain className="w-3.5 h-3.5" />
+                <Brain className="w-3 h-3" />
                 <span>{isOpen ? 'Hide reasoning' : 'See reasoning'}</span>
-                {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                {isOpen ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
             </button>
             {isOpen && (
-                <div className="mt-2 ml-1">
-                    {/* Tree-style reasoning steps */}
-                    {hasSteps && (
-                        <div className="relative pl-4">
-                            {/* Vertical connector line */}
-                            <div className="absolute left-[7px] top-0 bottom-2 w-px bg-[#E5E7EB]" />
-                            {reasoningSteps.map((step, idx) => (
-                                <div key={idx} className="relative flex items-start gap-2.5 mb-2 last:mb-0">
-                                    {/* Curved branch connector */}
-                                    <div className="absolute left-[-9px] top-[9px] w-[12px] h-px bg-[#E5E7EB]" />
-                                    <div className="absolute left-[-9px] top-0 w-px h-[9px] bg-[#E5E7EB]" />
-                                    {/* Dot */}
-                                    <div className="relative z-10 mt-[5px] w-[7px] h-[7px] rounded-full bg-[#D1D5DB] flex-shrink-0 ring-2 ring-white" />
-                                    {/* Step text */}
-                                    <p className="text-[11px] text-[#4B5563] leading-[1.6] -mt-px">{step}</p>
+                <div className="mt-3 ml-1 space-y-2">
+                    {/* Narrative detail (from split long message) */}
+                    {messageDetail && (
+                        <p className="text-[12px] text-[#555] leading-relaxed whitespace-pre-wrap">{messageDetail}</p>
+                    )}
+                    {/* Key-value reasoning fields — flat table like production */}
+                    {entries.length > 0 && (
+                        <div className="space-y-1.5">
+                            {entries.map(([key, val]) => (
+                                <div key={key} className="flex items-baseline">
+                                    <span className="text-[12px] text-[#6B7280] w-[130px] flex-shrink-0">{formatFieldKey(key)}</span>
+                                    <span className="text-[12px] text-[#171717] font-medium break-all">
+                                        {formatValue(val)}
+                                    </span>
                                 </div>
                             ))}
                         </div>
                     )}
-                    {/* Narrative detail (from split long message) */}
-                    {messageDetail && !hasSteps && (
-                        <p className="text-[11px] text-[#555] leading-relaxed mb-2 whitespace-pre-wrap pl-4 border-l-2 border-[#E5E7EB]">{messageDetail}</p>
-                    )}
-                    {/* Key-value reasoning fields */}
-                    {entries.length > 0 && (
-                        <div className={`bg-[#FAFAFA] border border-[#F0F0F0] rounded-lg p-3 space-y-1.5 ${hasSteps || messageDetail ? 'mt-2.5' : ''}`}>
-                            {entries.map(([key, val]) => (
-                                <div key={key} className="flex items-baseline gap-2 text-[11px]">
-                                    <span className="text-[#9CA3AF] min-w-[100px] flex-shrink-0">{formatFieldKey(key)}</span>
-                                    <span className={`font-medium ${getValueColor(key, val)}`}>
-                                        {formatValue(val)}
-                                    </span>
+                    {/* Tree-style reasoning steps (when explicitly provided) */}
+                    {hasSteps && (
+                        <div className="space-y-1.5 mt-1">
+                            {reasoningSteps.map((step, idx) => (
+                                <div key={idx} className="flex items-baseline">
+                                    <span className="text-[12px] text-[#6B7280] w-[130px] flex-shrink-0">Step {idx + 1}</span>
+                                    <span className="text-[12px] text-[#171717] font-medium">{step}</span>
                                 </div>
                             ))}
                         </div>
