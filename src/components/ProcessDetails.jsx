@@ -711,7 +711,7 @@ const ProcessDetails = () => {
                                                 </span>
                                             </div>
                                             <p className="text-[12px] text-[#666] mt-0.5 leading-relaxed">
-                                                {splitLogMessage(log.message).summary}
+                                                {splitLogMessage(log.message).summary.replace(/^[•·\-*]\s*/, '')}
                                             </p>
                                             {dbArtifactsForLog.length > 0 && (
                                                 <div className="flex flex-wrap gap-2 mt-2">
