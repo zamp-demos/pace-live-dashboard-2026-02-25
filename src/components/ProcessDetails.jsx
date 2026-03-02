@@ -580,6 +580,86 @@ const ProcessDetails = () => {
     // Extract case details from log metadata
     const caseDetails = useMemo(() => extractCaseDetails(logs), [logs]);
 
+    /* ─── Group logs by step_name so sub-steps render as one entry ─── */
+    const groupedLogs = useMemo(() => {
+        const groups = [];
+        const stepMap = new Map(); // step_name -> group index
+
+        logs.forEach((log) => {
+            const stepName = log.metadata?.step_name;
+            if (stepName && stepMap.has(stepName)) {
+                // Add to existing group
+                groups[stepMap.get(stepName)].logs.push(log);
+            } else {
+                // New group
+                const idx = groups.length;
+                if (stepName) stepMap.set(stepName, idx);
+                groups.push({ stepName: stepName || null, logs: [log] });
+            }
+        });
+
+        // Enrich each group with combined artifacts, reasoning, recordings
+        return groups.map((group) => {
+            const firstLog = group.logs[0];
+            const lastLog = group.logs[group.logs.length - 1];
+            const stepNumbers = new Set(group.logs.map(l => l.step_number));
+
+            // Collect all DB artifacts whose step_number matches any log in group
+            const dbArts = artifacts.filter(a =>
+                stepNumbers.has(a.step_number) ||
+                group.logs.some(l =>
+                    l.log_type === 'artifact' && (
+                        l.message?.includes(a.filename) ||
+                        (l.metadata?.artifact_id && l.metadata.artifact_id === a.id)
+                    )
+                )
+            );
+
+            // Collect all meta artifacts from classified metadata
+            const metaArts = [];
+            group.logs.forEach(l => {
+                const classified = logMetaClassified[l.id];
+                if (classified?.dataArtifacts) metaArts.push(...classified.dataArtifacts);
+            });
+
+            // Collect recordings for any step_number in the group
+            const recs = recordings.filter(r => stepNumbers.has(r.step_number));
+
+            // Merge reasoning from all logs
+            const mergedReasoning = {};
+            const allReasoningSteps = [];
+            group.logs.forEach(l => {
+                const classified = logMetaClassified[l.id];
+                if (classified?.reasoning) Object.assign(mergedReasoning, classified.reasoning);
+                const rs = l.metadata?.reasoning_steps;
+                if (Array.isArray(rs)) allReasoningSteps.push(...rs);
+            });
+
+            // Collect non-artifact messages
+            const messages = group.logs
+                .filter(l => l.log_type !== 'artifact' && l.message)
+                .map(l => l.message);
+
+            // Combined message detail
+            const combinedMessage = messages.join(' ');
+            const msgSplit = splitLogMessage(combinedMessage);
+
+            return {
+                ...group,
+                firstLog,
+                lastLog,
+                stepNumbers,
+                dbArtifacts: dbArts,
+                metaArtifacts: metaArts,
+                recordings: recs,
+                mergedReasoning,
+                allReasoningSteps,
+                messages,
+                msgSplit,
+            };
+        });
+    }, [logs, artifacts, recordings, logMetaClassified]);
+
     const formatTime = (ts) => {
         if (!ts) return '';
         return new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
@@ -686,22 +766,28 @@ const ProcessDetails = () => {
                         </div>
                     ) : (
                         <div className="relative">
-                            {logs.map((log, index) => {
-                                const status = getIconStatus(log, index);
-                                const isLastItem = index === logs.length - 1;
-                                const classified = logMetaClassified[log.id] || { reasoning: {}, dataArtifacts: [] };
-                                const dbArtifactsForLog = getDbArtifactsForLog(log);
-                                const logDataArtifacts = classified.dataArtifacts;
-                                const _msgSplit = splitLogMessage(log.message);
-                                const _reasoningSteps = log.metadata?.reasoning_steps;
-                                const hasReasoningBox = (
-                                    Object.keys(classified.reasoning || {}).length > 0 ||
-                                    !!_msgSplit.detail ||
-                                    (Array.isArray(_reasoningSteps) && _reasoningSteps.length > 0)
+                            {groupedLogs.map((group, groupIndex) => {
+                                const { firstLog, lastLog, mergedReasoning, allReasoningSteps, msgSplit, dbArtifacts, metaArtifacts, recordings: groupRecordings } = group;
+                                const isLastGroup = groupIndex === groupedLogs.length - 1;
+                                const status = getIconStatus(lastLog, isLastGroup ? logs.length - 1 : logs.indexOf(lastLog));
+                                const stepLabel = group.stepName || getStepName(firstLog);
+                                const hasReasoning = (
+                                    Object.keys(mergedReasoning || {}).length > 0 ||
+                                    !!msgSplit.detail ||
+                                    allReasoningSteps.length > 0
                                 );
+                                // Deduplicate DB artifacts by id
+                                const seenArtIds = new Set();
+                                const uniqueDbArts = dbArtifacts.filter(a => {
+                                    if (seenArtIds.has(a.id)) return false;
+                                    seenArtIds.add(a.id);
+                                    return true;
+                                });
+                                // All attachments: DB artifacts + meta artifacts + recordings
+                                const hasAttachments = uniqueDbArts.length > 0 || metaArtifacts.length > 0 || groupRecordings.length > 0;
 
                                 return (
-                                    <div key={log.id} className="flex gap-4 pb-6 relative">
+                                    <div key={firstLog.id} className="flex gap-4 pb-6 relative">
                                         <div className="flex flex-col items-center w-[11px] flex-shrink-0 pt-[4px]">
                                             <div className={`w-[11px] h-[11px] rounded-[2px] border flex-shrink-0 ${
                                                 status === 'complete'
@@ -710,29 +796,42 @@ const ProcessDetails = () => {
                                                     ? 'bg-[#FFDADA] border-[#A40000]'
                                                     : 'bg-[#DADAFF] border-[#0000A4] animate-square-to-diamond'
                                             }`} />
-                                            {!isLastItem && (
+                                            {!isLastGroup && (
                                                 <div className="w-[1px] bg-[#E5E7EB] flex-1 min-h-[20px] mt-1" />
                                             )}
                                         </div>
                                         <div className="flex-1 min-w-0 pb-2">
+                                            {/* Step name + timestamp */}
                                             <div className="flex items-center gap-2 flex-wrap">
                                                 <span className="text-[13px] font-medium text-[#171717]">
-                                                    {getStepName(log)}
+                                                    {stepLabel}
                                                 </span>
                                                 <span className="text-[10px] text-[#9CA3AF]">
-                                                    {formatTime(log.created_at)}
+                                                    {formatTime(firstLog.created_at)}
                                                 </span>
+                                                {group.logs.length > 1 && (
+                                                    <span className="text-[10px] text-[#D1D5DB]">
+                                                        ({group.logs.length} sub-steps)
+                                                    </span>
+                                                )}
                                             </div>
-                                            {/* Hide summary when reasoning box will show the same content */}
-                                            {!hasReasoningBox && (
-                                            <p className="text-[12px] text-[#666] mt-0.5 leading-relaxed">
-                                                {_msgSplit.summary.replace(/^[•·\-*]\s*/, '')}
-                                            </p>
+                                            {/* Summary text — hidden when reasoning box shows it */}
+                                            {!hasReasoning && msgSplit.summary && (
+                                                <p className="text-[12px] text-[#666] mt-0.5 leading-relaxed">
+                                                    {msgSplit.summary.replace(/^[\u2022\u00b7\-*]\s*/, '')}
+                                                </p>
                                             )}
-                                            {dbArtifactsForLog.length > 0 && (
-                                                <div className="flex flex-wrap gap-2 mt-2">
-                                                    {dbArtifactsForLog.map(art => {
-                                                        const isDoc = isDocumentFile(art);
+                                            {/* Reasoning box with merged data */}
+                                            <CollapsibleReasoning
+                                                reasoning={mergedReasoning}
+                                                messageDetail={msgSplit.detail}
+                                                reasoningSteps={allReasoningSteps}
+                                                summaryText={msgSplit.summary}
+                                            />
+                                            {/* All attachments: DB artifacts + data artifacts + recordings */}
+                                            {hasAttachments && (
+                                                <div className="flex flex-wrap gap-2 mt-2.5">
+                                                    {uniqueDbArts.map(art => {
                                                         const isPdf = art.filename?.toLowerCase().endsWith('.pdf');
                                                         const isImg = /\.(png|jpg|jpeg|gif|webp)$/i.test(art.filename || '');
                                                         return (
@@ -754,25 +853,15 @@ const ProcessDetails = () => {
                                                             </button>
                                                         );
                                                     })}
-                                                </div>
-                                            )}
-                                            {logDataArtifacts.length > 0 && (
-                                                <div className="flex flex-wrap gap-2 mt-2">
-                                                    {logDataArtifacts.map(da => (
+                                                    {metaArtifacts.map(da => (
                                                         <button key={da.id} onClick={() => setSelectedArtifact(da)}
                                                             className="bg-[#f2f2f2] hover:bg-gray-200 rounded-[6px] px-2 py-1 flex items-center gap-1.5 transition-colors">
                                                             <Database className="h-3.5 w-3.5 text-[#666]" strokeWidth={1.5} />
                                                             <span className="text-xs font-normal text-black">{da.filename}</span>
                                                         </button>
                                                     ))}
-                                                </div>
-                                            )}
-                                            {(() => {
-                                                const rec = getRecordingForLog(log);
-                                                if (!rec) return null;
-                                                return (
-                                                    <div className="flex flex-wrap gap-2 mt-2">
-                                                        <button
+                                                    {groupRecordings.map(rec => (
+                                                        <button key={rec.id}
                                                             onClick={() => handleArtifactClick({ ...rec, _isVideo: true })}
                                                             className="bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 rounded-[6px] px-2.5 py-1.5 flex items-center gap-2 transition-colors">
                                                             <Play className="h-3.5 w-3.5 text-indigo-600 flex-shrink-0" strokeWidth={1.5} />
@@ -781,10 +870,9 @@ const ProcessDetails = () => {
                                                                 <span className="text-[9px] text-indigo-400">(processing)</span>
                                                             )}
                                                         </button>
-                                                    </div>
-                                                );
-                                            })()}
-                                            <CollapsibleReasoning reasoning={classified.reasoning} messageDetail={_msgSplit.detail} reasoningSteps={_reasoningSteps} summaryText={_msgSplit.summary} />
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 );
