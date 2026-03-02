@@ -22,7 +22,7 @@ const REASONING_KEYS = new Set([
     'decision_by', 'final_status', 'match_verdict', 'line_items_total'
 ]);
 
-const SKIP_KEYS = new Set(['step_name', 'reasoning_steps']);
+const SKIP_KEYS = new Set(['step_name', 'reasoning_steps', 'dataset_name']);
 
 /* Fields we want to surface in Case Details sidebar */
 const CASE_DETAIL_KEYS = new Set([
@@ -72,15 +72,18 @@ function classifyMetadata(metadata) {
 
     const reasoning = {};
     const dataArtifacts = [];
+    // Use dataset_name or step_name as the artifact label instead of the raw key
+    const preferredLabel = metadata.dataset_name || metadata.step_name || null;
 
     Object.entries(metadata).forEach(([key, value]) => {
         if (SKIP_KEYS.has(key)) return;
 
         if (isLargeData(value)) {
-            const label = key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim();
+            const fallbackLabel = key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim();
+            const label = preferredLabel || (fallbackLabel.charAt(0).toUpperCase() + fallbackLabel.slice(1));
             dataArtifacts.push({
                 id: `meta-${key}-${Math.random().toString(36).slice(2, 8)}`,
-                filename: `${label.charAt(0).toUpperCase() + label.slice(1)}`,
+                filename: label,
                 file_type: 'json',
                 content: value,
                 _isMetaArtifact: true,
