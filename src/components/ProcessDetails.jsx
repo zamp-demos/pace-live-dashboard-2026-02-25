@@ -710,9 +710,12 @@ const ProcessDetails = () => {
                                                     {formatTime(log.created_at)}
                                                 </span>
                                             </div>
+                                            {/* Hide summary when reasoning box will show the same content */}
+                                            {!(Object.keys(classified.reasoning || {}).length > 0 || splitLogMessage(log.message).detail || (Array.isArray(log.metadata?.reasoning_steps) && log.metadata.reasoning_steps.length > 0)) && (
                                             <p className="text-[12px] text-[#666] mt-0.5 leading-relaxed">
                                                 {splitLogMessage(log.message).summary.replace(/^[•·\-*]\s*/, '')}
                                             </p>
+                                            )}
                                             {dbArtifactsForLog.length > 0 && (
                                                 <div className="flex flex-wrap gap-2 mt-2">
                                                     {dbArtifactsForLog.map(art => {
