@@ -771,7 +771,7 @@ const ProcessDetails = () => {
                     </div>
                 </>
             ) : (
-                <div className="w-[400px] flex-shrink-0 border-l border-[#f0f0f0] bg-[#FAFAFA] overflow-y-auto custom-scrollbar">
+                <div className="w-[400px] flex-shrink-0 border-l border-[#f0f0f0] bg-white overflow-y-auto custom-scrollbar">
                     <div className="px-5 pt-5 pb-4">
                         <h3 className="text-[14px] font-semibold text-[#171717]">Key Details</h3>
                     </div>
