@@ -1,7 +1,8 @@
 {
   "rewrites": [
     { "source": "/api/chat", "destination": "/api/chat" },
-    { "source": "/api/kb", "destination": "/api/kb" }
+    { "source": "/api/kb", "destination": "/api/kb" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ],
   "framework": "vite"
 }
