@@ -148,11 +148,12 @@ const ProcessList = () => {
                                             }`} />
                                         </div>
                                     </td>
-                                    <td className="px-4 py-2.5 text-[13px] font-[450] text-[#171717] max-w-[250px] truncate">
-                                        {run.document_name || run.name}
+                                    <td className="px-4 py-2.5 max-w-[250px]">
+                                        <div className="text-[13px] font-[450] text-[#171717] truncate">{run.name || run.document_name}</div>
+                                        <div className="text-[11px] text-[#8f8f8f] truncate">{run.document_name}</div>
                                     </td>
                                     <td className="px-4 py-2.5 text-[13px] font-[450] text-[#171717] max-w-[350px] truncate">
-                                        {run.current_status_text}
+                                        {run.current_status_text || '—'}
                                     </td>
                                     <td className="px-4 py-2.5 text-[12px] text-[#8f8f8f] whitespace-nowrap">
                                         {formatTime(run.updated_at || run.created_at)}
