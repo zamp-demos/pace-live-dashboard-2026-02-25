@@ -22,7 +22,7 @@ const REASONING_KEYS = new Set([
     'decision_by', 'final_status', 'match_verdict', 'line_items_total'
 ]);
 
-const SKIP_KEYS = new Set(['step_name']);
+const SKIP_KEYS = new Set(['step_name', 'reasoning_steps']);
 
 /* Fields we want to surface in Case Details sidebar */
 const CASE_DETAIL_KEYS = new Set([
@@ -137,10 +137,11 @@ const formatFieldKey = (key) => {
 };
 
 /* ─── CollapsibleReasoning ─── */
-const CollapsibleReasoning = ({ reasoning, messageDetail }) => {
+const CollapsibleReasoning = ({ reasoning, messageDetail, reasoningSteps }) => {
     const [isOpen, setIsOpen] = useState(false);
     const entries = Object.entries(reasoning || {});
-    if (entries.length === 0 && !messageDetail) return null;
+    const hasSteps = Array.isArray(reasoningSteps) && reasoningSteps.length > 0;
+    if (entries.length === 0 && !messageDetail && !hasSteps) return null;
 
     const formatValue = (val) => {
         if (val === true) return 'Yes';
@@ -165,28 +166,52 @@ const CollapsibleReasoning = ({ reasoning, messageDetail }) => {
     };
 
     return (
-        <div className="mt-2">
+        <div className="mt-2.5">
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center gap-1.5 text-[10px] text-[#9CA3AF] hover:text-[#666] transition-colors"
+                className="flex items-center gap-1.5 text-[11px] text-[#8B5CF6] hover:text-[#7C3AED] transition-colors font-medium"
             >
-                <Brain className="w-3 h-3" />
-                {isOpen ? <ChevronUp className="w-2.5 h-2.5" /> : <ChevronDown className="w-2.5 h-2.5" />}
-                <span>Reasoning</span>
+                <Brain className="w-3.5 h-3.5" />
+                <span>{isOpen ? 'Hide reasoning' : 'See reasoning'}</span>
+                {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
             </button>
             {isOpen && (
-                <div className="mt-2 bg-[#fafafa] border border-[#f0f0f0] rounded-md p-3 space-y-1.5">
-                    {messageDetail && (
-                        <p className="text-[11px] text-[#555] leading-relaxed mb-2 whitespace-pre-wrap">{messageDetail}</p>
-                    )}
-                    {entries.map(([key, val]) => (
-                        <div key={key} className="flex items-baseline gap-2 text-[11px]">
-                            <span className="text-[#9CA3AF] min-w-[100px] flex-shrink-0">{formatFieldKey(key)}</span>
-                            <span className={`font-medium ${getValueColor(key, val)}`}>
-                                {formatValue(val)}
-                            </span>
+                <div className="mt-2 ml-1">
+                    {/* Tree-style reasoning steps */}
+                    {hasSteps && (
+                        <div className="relative pl-4">
+                            {/* Vertical connector line */}
+                            <div className="absolute left-[7px] top-0 bottom-2 w-px bg-[#E5E7EB]" />
+                            {reasoningSteps.map((step, idx) => (
+                                <div key={idx} className="relative flex items-start gap-2.5 mb-2 last:mb-0">
+                                    {/* Curved branch connector */}
+                                    <div className="absolute left-[-9px] top-[9px] w-[12px] h-px bg-[#E5E7EB]" />
+                                    <div className="absolute left-[-9px] top-0 w-px h-[9px] bg-[#E5E7EB]" />
+                                    {/* Dot */}
+                                    <div className="relative z-10 mt-[5px] w-[7px] h-[7px] rounded-full bg-[#D1D5DB] flex-shrink-0 ring-2 ring-white" />
+                                    {/* Step text */}
+                                    <p className="text-[11px] text-[#4B5563] leading-[1.6] -mt-px">{step}</p>
+                                </div>
+                            ))}
                         </div>
-                    ))}
+                    )}
+                    {/* Narrative detail (from split long message) */}
+                    {messageDetail && !hasSteps && (
+                        <p className="text-[11px] text-[#555] leading-relaxed mb-2 whitespace-pre-wrap pl-4 border-l-2 border-[#E5E7EB]">{messageDetail}</p>
+                    )}
+                    {/* Key-value reasoning fields */}
+                    {entries.length > 0 && (
+                        <div className={`bg-[#FAFAFA] border border-[#F0F0F0] rounded-lg p-3 space-y-1.5 ${hasSteps || messageDetail ? 'mt-2.5' : ''}`}>
+                            {entries.map(([key, val]) => (
+                                <div key={key} className="flex items-baseline gap-2 text-[11px]">
+                                    <span className="text-[#9CA3AF] min-w-[100px] flex-shrink-0">{formatFieldKey(key)}</span>
+                                    <span className={`font-medium ${getValueColor(key, val)}`}>
+                                        {formatValue(val)}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             )}
         </div>
@@ -691,20 +716,23 @@ const ProcessDetails = () => {
                                                     {dbArtifactsForLog.map(art => {
                                                         const isDoc = isDocumentFile(art);
                                                         const isPdf = art.filename?.toLowerCase().endsWith('.pdf');
+                                                        const isImg = /\.(png|jpg|jpeg|gif|webp)$/i.test(art.filename || '');
                                                         return (
                                                             <button key={art.id} onClick={() => handleArtifactClick(art)}
-                                                                className={`${isDoc ? 'bg-red-50 hover:bg-red-100 border border-red-100' : 'bg-[#f2f2f2] hover:bg-gray-200'} rounded-[6px] px-2.5 py-1.5 flex items-center gap-2 transition-colors`}>
-                                                                {isPdf ? (
-                                                                    <FileText className="h-3.5 w-3.5 text-red-500 flex-shrink-0" strokeWidth={1.5} />
-                                                                ) : isDoc ? (
-                                                                    <Image className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" strokeWidth={1.5} />
-                                                                ) : (
-                                                                    <FileText className="h-3.5 w-3.5 text-[#666] flex-shrink-0" strokeWidth={1.5} />
-                                                                )}
-                                                                <span className="text-xs font-normal text-black">{art.filename}</span>
-                                                                {isDoc && (
-                                                                    <Eye className="h-3 w-3 text-[#9CA3AF] flex-shrink-0" strokeWidth={1.5} />
-                                                                )}
+                                                                className={`${isPdf ? 'bg-red-50 hover:bg-red-100 border border-red-100' : isImg ? 'bg-blue-50 hover:bg-blue-100 border border-blue-100' : 'bg-[#f2f2f2] hover:bg-gray-200 border border-gray-200'} rounded-lg px-2.5 py-1.5 flex items-center gap-2 transition-colors group/chip`}>
+                                                                <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${
+                                                                    isPdf ? 'bg-red-100' : isImg ? 'bg-blue-100' : 'bg-gray-200'
+                                                                }`}>
+                                                                    {isPdf ? (
+                                                                        <FileText className="h-3 w-3 text-red-500" strokeWidth={2} />
+                                                                    ) : isImg ? (
+                                                                        <Image className="h-3 w-3 text-blue-500" strokeWidth={2} />
+                                                                    ) : (
+                                                                        <FileText className="h-3 w-3 text-[#666]" strokeWidth={2} />
+                                                                    )}
+                                                                </div>
+                                                                <span className="text-[11px] font-medium text-[#374151]">{art.filename}</span>
+                                                                <Eye className="h-3 w-3 text-[#D1D5DB] group-hover/chip:text-[#9CA3AF] flex-shrink-0 ml-0.5" strokeWidth={1.5} />
                                                             </button>
                                                         );
                                                     })}
@@ -738,7 +766,7 @@ const ProcessDetails = () => {
                                                     </div>
                                                 );
                                             })()}
-                                            <CollapsibleReasoning reasoning={classified.reasoning} messageDetail={splitLogMessage(log.message).detail} />
+                                            <CollapsibleReasoning reasoning={classified.reasoning} messageDetail={splitLogMessage(log.message).detail} reasoningSteps={log.metadata?.reasoning_steps} />
                                         </div>
                                     </div>
                                 );
@@ -765,40 +793,38 @@ const ProcessDetails = () => {
                     </div>
                 </>
             ) : (
-                <div className="w-[400px] flex-shrink-0 border-l border-[#f0f0f0] bg-white overflow-y-auto custom-scrollbar">
-                    <div className="px-5 pt-5 pb-3">
-                        <h3 className="text-[13px] font-semibold text-[#171717] mb-1">Key Details</h3>
+                <div className="w-[400px] flex-shrink-0 border-l border-[#f0f0f0] bg-[#FAFAFA] overflow-y-auto custom-scrollbar">
+                    <div className="px-5 pt-5 pb-4">
+                        <h3 className="text-[14px] font-semibold text-[#171717]">Key Details</h3>
                     </div>
 
                     {/* Case Details - extracted from log metadata */}
                     {Object.keys(caseDetails).length > 0 && (
-                        <div className="px-5 pb-4">
-                            <div className="flex items-center gap-2 mb-3">
-                                <Briefcase className="w-3.5 h-3.5 text-[#9CA3AF]" />
-                                <span className="text-[11px] font-medium text-[#9CA3AF] uppercase tracking-wider">Case Details</span>
+                        <div className="mx-4 mb-3 bg-white rounded-xl border border-[#E5E7EB] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                            <div className="flex items-center gap-2 px-4 pt-3.5 pb-2">
+                                <Briefcase className="w-3.5 h-3.5 text-[#6B7280]" />
+                                <span className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider">Case Details</span>
                             </div>
-                            <div className="space-y-2.5">
+                            <div className="px-4 pb-3.5 space-y-3">
                                 {Object.entries(caseDetails).map(([key, value]) => (
-                                    <div key={key} className="flex items-start">
-                                        <span className="text-[12px] text-gray-500 w-[120px] flex-shrink-0">{formatFieldKey(key)}</span>
-                                        <span className="text-[12px] text-gray-900 font-medium flex-1 break-words">
+                                    <div key={key}>
+                                        <p className="text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wider mb-0.5">{formatFieldKey(key)}</p>
+                                        <p className="text-[13px] text-[#171717] font-medium break-words leading-snug">
                                             {formatCaseValue(key, value)}
-                                        </span>
+                                        </p>
                                     </div>
                                 ))}
                             </div>
                         </div>
                     )}
 
-                    {Object.keys(caseDetails).length > 0 && <div className="mx-5 border-t border-[#f0f0f0]" />}
-
                     {/* Run Details */}
-                    <div className="px-5 py-4">
-                        <div className="flex items-center gap-2 mb-3">
-                            <Database className="w-3.5 h-3.5 text-[#9CA3AF]" />
-                            <span className="text-[11px] font-medium text-[#9CA3AF] uppercase tracking-wider">Run Details</span>
+                    <div className="mx-4 mb-3 bg-white rounded-xl border border-[#E5E7EB] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                        <div className="flex items-center gap-2 px-4 pt-3.5 pb-2">
+                            <Database className="w-3.5 h-3.5 text-[#6B7280]" />
+                            <span className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider">Run Details</span>
                         </div>
-                        <div className="space-y-2.5">
+                        <div className="px-4 pb-3.5 space-y-3">
                             {[
                                 ['Run ID', runId?.slice(0, 8)],
                                 ['Status', run?.status?.replace(/_/g, ' ')],
@@ -806,45 +832,57 @@ const ProcessDetails = () => {
                                 ['Completed', run?.completed_at ? formatDate(run.completed_at) + ' ' + formatTime(run.completed_at) : '\u2014'],
                                 ['Steps', logs.length.toString()],
                             ].map(([label, value]) => (
-                                <div key={label} className="flex items-center">
-                                    <span className="text-[12px] text-gray-500 w-[120px] flex-shrink-0">{label}</span>
-                                    <span className="text-[12px] text-gray-900 font-medium">{value || '\u2014'}</span>
+                                <div key={label}>
+                                    <p className="text-[10px] font-medium text-[#9CA3AF] uppercase tracking-wider mb-0.5">{label}</p>
+                                    <p className="text-[13px] text-[#171717] font-medium">{value || '\u2014'}</p>
                                 </div>
                             ))}
                         </div>
                     </div>
 
-                    <div className="mx-5 border-t border-[#f0f0f0]" />
-
                     {/* Artifacts */}
-                    <div className="px-5 pt-4 pb-5">
-                        <div className="flex items-center gap-2 mb-3">
-                            <Presentation className="w-3.5 h-3.5 text-[#9CA3AF]" />
-                            <span className="text-[11px] font-medium text-[#9CA3AF] uppercase tracking-wider">Artifacts</span>
+                    <div className="mx-4 mb-4 bg-white rounded-xl border border-[#E5E7EB] shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+                        <div className="flex items-center gap-2 px-4 pt-3.5 pb-2">
+                            <Presentation className="w-3.5 h-3.5 text-[#6B7280]" />
+                            <span className="text-[11px] font-semibold text-[#6B7280] uppercase tracking-wider">Artifacts</span>
                         </div>
-                        {allArtifacts.length === 0 ? (
-                            <p className="text-[12px] text-[#9CA3AF]">No artifacts generated</p>
-                        ) : (
-                            <div className="space-y-1.5">
-                                {allArtifacts.map(art => (
-                                    <button key={art.id} onClick={() => handleArtifactClick(art)}
-                                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[#f9fafb] transition-colors text-left group">
-                                        {art._isMetaArtifact ? (
-                                            <Database className="w-4 h-4 text-[#9CA3AF] group-hover:text-[#666] flex-shrink-0" />
-                                        ) : (
-                                            <FileText className="w-4 h-4 text-[#9CA3AF] group-hover:text-[#666] flex-shrink-0" />
-                                        )}
-                                        <div className="min-w-0">
-                                            <p className="text-[12px] font-medium text-[#171717] truncate">{art.filename}</p>
-                                            <p className="text-[10px] text-[#9CA3AF]">
-                                                {art._isMetaArtifact ? 'Extracted from log metadata' : (art.file_type || 'file')}
-                                            </p>
-                                        </div>
-                                        <ExternalLink className="w-3.5 h-3.5 text-[#d1d5db] group-hover:text-[#9CA3AF] ml-auto flex-shrink-0" />
-                                    </button>
-                                ))}
-                            </div>
-                        )}
+                        <div className="px-4 pb-3.5">
+                            {allArtifacts.length === 0 ? (
+                                <p className="text-[12px] text-[#9CA3AF]">No artifacts generated</p>
+                            ) : (
+                                <div className="space-y-1">
+                                    {allArtifacts.map(art => {
+                                        const isPdf = art.filename?.toLowerCase().endsWith('.pdf');
+                                        const isImg = /\.(png|jpg|jpeg|gif|webp)$/i.test(art.filename || '');
+                                        return (
+                                            <button key={art.id} onClick={() => handleArtifactClick(art)}
+                                                className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-[#f5f5f5] transition-colors text-left group">
+                                                <div className={`w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 ${
+                                                    isPdf ? 'bg-red-50' : isImg ? 'bg-blue-50' : art._isMetaArtifact ? 'bg-purple-50' : 'bg-gray-100'
+                                                }`}>
+                                                    {art._isMetaArtifact ? (
+                                                        <Database className="w-3.5 h-3.5 text-purple-500" />
+                                                    ) : isPdf ? (
+                                                        <FileText className="w-3.5 h-3.5 text-red-500" />
+                                                    ) : isImg ? (
+                                                        <Image className="w-3.5 h-3.5 text-blue-500" />
+                                                    ) : (
+                                                        <FileText className="w-3.5 h-3.5 text-[#666]" />
+                                                    )}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="text-[12px] font-medium text-[#171717] truncate">{art.filename}</p>
+                                                    <p className="text-[10px] text-[#9CA3AF]">
+                                                        {art._isMetaArtifact ? 'Extracted data' : (art.file_type || 'file')}
+                                                    </p>
+                                                </div>
+                                                <Eye className="w-3.5 h-3.5 text-[#d1d5db] group-hover:text-[#9CA3AF] flex-shrink-0" />
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}
