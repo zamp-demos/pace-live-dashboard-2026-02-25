@@ -580,21 +580,40 @@ const ProcessDetails = () => {
     // Extract case details from log metadata
     const caseDetails = useMemo(() => extractCaseDetails(logs), [logs]);
 
-    /* ─── Group logs by step_name so sub-steps render as one entry ─── */
+    /* ─── Group logs by step_number so sub-steps render as one entry ─── */
     const groupedLogs = useMemo(() => {
         const groups = [];
-        const stepMap = new Map(); // step_name -> group index
+        const stepMap = new Map(); // step_number -> group index
 
         logs.forEach((log) => {
-            const stepName = log.metadata?.step_name;
-            if (stepName && stepMap.has(stepName)) {
+            const stepNum = log.step_number;
+            if (stepNum != null && stepMap.has(stepNum)) {
                 // Add to existing group
-                groups[stepMap.get(stepName)].logs.push(log);
+                const group = groups[stepMap.get(stepNum)];
+                group.logs.push(log);
+                // Prefer non-artifact step_name as the group label (system/decision types)
+                const sn = log.metadata?.step_name;
+                if (sn && log.log_type !== 'artifact' && !group.stepName) {
+                    group.stepName = sn;
+                }
             } else {
                 // New group
                 const idx = groups.length;
-                if (stepName) stepMap.set(stepName, idx);
-                groups.push({ stepName: stepName || null, logs: [log] });
+                if (stepNum != null) stepMap.set(stepNum, idx);
+                const sn = log.metadata?.step_name;
+                // For the label, prefer non-artifact step_name
+                const label = (log.log_type !== 'artifact' && sn) ? sn : null;
+                groups.push({ stepName: label, logs: [log] });
+            }
+        });
+
+        // Second pass: fill in any group that still has no stepName
+        groups.forEach((group) => {
+            if (!group.stepName) {
+                for (const l of group.logs) {
+                    const sn = l.metadata?.step_name;
+                    if (sn) { group.stepName = sn; break; }
+                }
             }
         });
 
