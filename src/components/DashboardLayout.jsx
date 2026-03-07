@@ -10,7 +10,8 @@ import {
     ChevronRight,
     MessageSquare,
     Activity,
-    Search
+    Search,
+    Lightbulb
 } from 'lucide-react';
 import { supabase, fetchOrgs, fetchProcesses, subscribeToTable } from '../services/supabase';
 
@@ -151,6 +152,7 @@ const DashboardLayout = () => {
                     <div className="pb-4 border-b border-[#f0f0f0]">
                         <SidebarItem to="/done/data" icon={<Database />} label="Data" isActive={location.pathname === '/done/data'} />
                         <SidebarItem to="/done/people" icon={<Users />} label="People" isActive={location.pathname === '/done/people'} />
+                        <SidebarItem to="/done/insights" icon={<Lightbulb />} label="Insights" isActive={location.pathname === '/done/insights'} />
                     </div>
 
                     <div className="pt-4">

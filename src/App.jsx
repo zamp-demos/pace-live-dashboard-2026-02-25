@@ -7,6 +7,7 @@ import KnowledgeBase from './components/KnowledgeBase';
 import ChatPanel from './components/ChatPanel';
 import Login from './components/Login';
 import DataExplorer from './components/DataExplorer';
+import InsightsPanel from './components/InsightsPanel';
 
 function App() {
   return (
@@ -19,6 +20,7 @@ function App() {
           <Route path="knowledge-base" element={<KnowledgeBase />} />
           <Route path="process/:runId" element={<ProcessDetails />} />
           <Route path="data" element={<DataExplorer />} />
+          <Route path="insights" element={<InsightsPanel />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
