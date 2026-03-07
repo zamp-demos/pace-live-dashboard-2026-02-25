@@ -160,7 +160,7 @@ export default function InsightsPanel() {
                                                 {status.label}
                                             </span>
                                         </div>
-                                        <h3 className="text-[14px] font-[550] text-[#171717] mb-1">Low-Risk False Positive Pattern</h3>
+                                        <h3 className="text-[14px] font-[550] text-[#171717] mb-1">{profile.insight_title || "Pattern Detected"}</h3>
                                         <p className="text-[13px] text-[#8f8f8f] line-clamp-2">{parsed.discoveryLog?.message || 'Pattern detected from historical screening data'}</p>
                                     </div>
                                     <div className="ml-3 mt-1 text-[#cacaca]">
