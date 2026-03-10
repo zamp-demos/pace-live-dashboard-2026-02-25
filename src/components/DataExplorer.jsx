@@ -332,7 +332,7 @@ export default function DataExplorer() {
 
                     {/* Pagination */}
                     {totalRows > 0 && (
-                        <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-t border-gray-100 bg-white">
+                        <div className="sticky bottom-0 z-10 flex-shrink-0 flex items-center justify-between px-4 py-2 border-t border-gray-100 bg-white shadow-[0_-2px_6px_rgba(0,0,0,0.04)]">
                             <span className="text-[10px] text-gray-400">
                                 {totalPages > 1
                                     ? `Page ${page + 1} of ${totalPages} (${totalRows} total rows)`
