@@ -189,7 +189,7 @@ export default function DataExplorer() {
     }
 
     return (
-        <div className="flex flex-col h-full bg-white overflow-x-hidden">
+        <div className="flex flex-col h-full bg-white overflow-hidden">
             {/* Header bar */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                 <div className="flex items-center gap-3">
@@ -332,7 +332,7 @@ export default function DataExplorer() {
 
                     {/* Pagination */}
                     {totalRows > 0 && (
-                        <div className="sticky bottom-0 z-10 flex-shrink-0 flex items-center justify-between px-4 py-2 border-t border-gray-100 bg-white shadow-[0_-2px_6px_rgba(0,0,0,0.04)]">
+                        <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-t border-gray-100 bg-white">
                             <span className="text-[10px] text-gray-400">
                                 {totalPages > 1
                                     ? `Page ${page + 1} of ${totalPages} (${totalRows} total rows)`
