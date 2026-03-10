@@ -9,19 +9,28 @@ const VideoPlayer = ({ recording, onClose }) => {
     const [isLoading, setIsLoading] = useState(false);
     const videoRef = useRef(null);
 
-    const title = recording?.metadata?.filename
+    const title = recording?.metadata?.label || recording?.metadata?.filename
         || (recording?.session_id ? `Recording ${recording.session_id.slice(0, 8)}` : 'Browser Recording');
     const subtitle = recording?.step_number != null
         ? `Step ${recording.step_number} \u2022 ${recording.status || 'available'}`
         : recording?.status || '';
 
-    // Fetch fresh pre-signed URL on-demand when recording changes
+    // Fetch fresh pre-signed URL on-demand, or use s3_url directly if available
     useEffect(() => {
         setVideoUrl(null);
         setHasError(false);
         setIsLoading(false);
 
-        if (!recording?.s3_key || recording?.status === 'pending') return;
+        if (recording?.status === 'pending') return;
+
+        // If we have a direct public URL, use it immediately (no API call needed)
+        if (recording?.s3_url) {
+            setVideoUrl(recording.s3_url);
+            return;
+        }
+
+        // Otherwise fall back to pre-signed URL via s3_key
+        if (!recording?.s3_key) return;
 
         let cancelled = false;
         setIsLoading(true);
@@ -37,7 +46,7 @@ const VideoPlayer = ({ recording, onClose }) => {
         });
 
         return () => { cancelled = true; };
-    }, [recording?.s3_key, recording?.status]);
+    }, [recording?.s3_key, recording?.s3_url, recording?.status]);
 
     const handleDownload = () => {
         if (!videoUrl) return;

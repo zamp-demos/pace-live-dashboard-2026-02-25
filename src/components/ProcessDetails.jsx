@@ -896,7 +896,7 @@ const ProcessDetails = () => {
                                                             onClick={() => handleArtifactClick({ ...rec, _isVideo: true })}
                                                             className="bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 rounded-[6px] px-2.5 py-1.5 flex items-center gap-2 transition-colors">
                                                             <Play className="h-3.5 w-3.5 text-indigo-600 flex-shrink-0" strokeWidth={1.5} />
-                                                            <span className="text-xs font-normal text-black">Browser Recording</span>
+                                                            <span className="text-xs font-normal text-black">{rec.metadata?.label || 'Browser Recording'}</span>
                                                             {rec.status === 'pending' && (
                                                                 <span className="text-[9px] text-indigo-400">(processing)</span>
                                                             )}
