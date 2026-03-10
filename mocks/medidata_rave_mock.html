@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Medidata Rave - Clinical Data Capture</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+            margin: 0;
+        }
+
+        .header {
+            background: #003d7a;
+            color: white;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .nav {
+            background: #004a94;
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .nav button {
+            background: #0056b3;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+
+        .nav button:hover {
+            background: #0069d9;
+        }
+
+        .content {
+            padding: 20px;
+            background: white;
+            margin: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        .data-table th,
+        .data-table td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+
+        .data-table th {
+            background: #003d7a;
+            color: white;
+        }
+
+        .export-btn {
+            background: #28a745;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            cursor: pointer;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-top: 15px;
+        }
+
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .status-locked {
+            background: #d4edda;
+            color: #155724;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>Medidata Rave EDC</h1>
+        <p>Study ID: CL-2024-SYS | Site: Global | User: data.integrity@lilly.com</p>
+    </div>
+
+    <div class="nav">
+        <button onclick="showSection('enrollment')">Enrollment & Randomization</button>
+        <button onclick="showSection('adverse-events')">Adverse Events</button>
+        <button onclick="showSection('survival')">Time-to-Event (OS)</button>
+    </div>
+
+    <div id="enrollment" class="content">
+        <h2>Patient Enrollment Summary <span class="status-badge status-locked">DATABASE LOCKED</span></h2>
+        <p><strong>Database Lock Date:</strong> 2025-12-20</p>
+
+        <table class="data-table">
+            <tr>
+                <th>Treatment Arm</th>
+                <th>Randomized (N)</th>
+                <th>Completed Study</th>
+                <th>Discontinued</th>
+            </tr>
+            <tr>
+                <td>LY-Investigational 5mg</td>
+                <td>162</td>
+                <td>158</td>
+                <td>4</td>
+            </tr>
+            <tr>
+                <td>LY-Investigational 10mg</td>
+                <td>163</td>
+                <td>159</td>
+                <td>4</td>
+            </tr>
+            <tr>
+                <td>Placebo</td>
+                <td>162</td>
+                <td>157</td>
+                <td>5</td>
+            </tr>
+            <tr style="font-weight: bold; background: #f8f9fa;">
+                <td>Total</td>
+                <td>487</td>
+                <td>474</td>
+                <td>13</td>
+            </tr>
+        </table>
+
+        <button class="export-btn">📥 Export PDS Dataset (CSV)</button>
+    </div>
+
+    <div id="adverse-events" class="content" style="display:none;">
+        <h2>Safety Summary: Adverse Events by Grade</h2>
+        <table class="data-table">
+            <tr>
+                <th>Severity Grade</th>
+                <th>Event Count</th>
+                <th>Patient Count (%)</th>
+            </tr>
+            <tr>
+                <td>Grade 1 (Mild)</td>
+                <td>421</td>
+                <td>188 (76.7%)</td>
+            </tr>
+            <tr>
+                <td>Grade 2 (Moderate)</td>
+                <td>298</td>
+                <td>145 (59.2%)</td>
+            </tr>
+            <tr>
+                <td>Grade 3 (Severe)</td>
+                <td>142</td>
+                <td>31 (12.7%)</td>
+            </tr>
+            <tr>
+                <td>Grade 4 (Life-threatening)</td>
+                <td>27</td>
+                <td>2 (0.8%)</td>
+            </tr>
+            <tr>
+                <td>Grade 5 (Death)</td>
+                <td>4</td>
+                <td>4 (1.6%)</td>
+            </tr>
+        </table>
+        <p><strong>Note:</strong> 33 total Grade 3/4 events recorded (3.68% of all events)</p>
+        <button class="export-btn">📥 Export Safety XML</button>
+    </div>
+
+    <div id="survival" class="content" style="display:none;">
+        <h2>Survival Analysis - Study RARE-2024-603</h2>
+        <table class="data-table">
+            <tr>
+                <th>Treatment</th>
+                <th>N</th>
+                <th>Total Events</th>
+                <th>Censored</th>
+                <th>Median OS (mo)</th>
+            </tr>
+            <tr>
+                <td>Active (LY-7792)</td>
+                <td>78</td>
+                <td>31</td>
+                <td>47</td>
+                <td>22.4</td>
+            </tr>
+            <tr>
+                <td>Control (Standard)</td>
+                <td>78</td>
+                <td>42</td>
+                <td>36</td>
+                <td>16.8</td>
+            </tr>
+        </table>
+        <button class="export-btn">📥 Export TTE Dataset</button>
+    </div>
+
+    <script>
+        function showSection(section) {
+            document.querySelectorAll('.content').forEach(el => el.style.display = 'none');
+            document.getElementById(section).style.display = 'block';
+        }
+    </script>
+</body>
+
+</html>

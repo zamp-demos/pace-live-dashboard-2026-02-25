@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Benchling - Electronic Lab Notebook</title>
+    <style>
+        body {
+            font-family: -apple-system, sans-serif;
+            background: #f7f9fc;
+            margin: 0;
+        }
+
+        .header {
+            background: #1a73e8;
+            color: white;
+            padding: 20px;
+        }
+
+        .search-area {
+            padding: 30px;
+            background: white;
+            border-bottom: 1px solid #eee;
+            text-align: center;
+        }
+
+        .search-input {
+            width: 60%;
+            padding: 12px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 4px 0 0 4px;
+        }
+
+        .search-btn {
+            padding: 12px 25px;
+            background: #1a73e8;
+            color: white;
+            border: none;
+            cursor: pointer;
+            border-radius: 0 4px 4px 0;
+            font-weight: bold;
+        }
+
+        .notebook-entry {
+            max-width: 800px;
+            margin: 30px auto;
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .lab-value-box {
+            background: #fffde7;
+            border: 2px solid #fbc02d;
+            padding: 20px;
+            border-radius: 6px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .val-text {
+            font-size: 32px;
+            font-weight: bold;
+            color: #d32f2f;
+        }
+
+        .meta {
+            color: #5f6368;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .signature {
+            margin-top: 40px;
+            border-top: 1px dashed #ccc;
+            padding-top: 10px;
+            color: #888;
+            font-style: italic;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>🧬 Benchling | Site Research Notebooks</h1>
+    </div>
+
+    <div class="search-area">
+        <input type="text" class="search-input" value="Patient: ONCO-0143, Date: 2025-08-14">
+        <button class="search-btn">Search Laboratory Folders</button>
+    </div>
+
+    <div class="notebook-entry">
+        <p class="meta"><strong>Entry ID:</strong> NB-SITE107-2025-042</p>
+        <p class="meta"><strong>Site:</strong> Site 107 - Boston Medical Lab</p>
+        <p class="meta"><strong>Patient:</strong> ONCO-0143 (Lilly Study ONCO-2024-502)</p>
+        <hr>
+        <h2>Hematology Summary - Cycle 3 Day 1</h2>
+        <p>Patient presenting for chemotherapy cycle. Lab draw performed at 08:30 AM.</p>
+
+        <div class="lab-value-box">
+            <p><strong>Absolute Neutrophil Count (ANC)</strong></p>
+            <div class="val-text">1.2 × 10⁹/L</div>
+            <p style="color: #666;">(Below Normal Range: 1.5 - 8.0)</p>
+            <p style="color: #d32f2f; font-weight: bold;">⚠️ GRADE 2 NEUTROPENIA DETECTED</p>
+        </div>
+
+        <p><strong>Site Note:</strong> Data verified by PI. Due to local LIMS outage at Site 107, this result was
+            manually recorded in Benchling and held for Friday batch synchronization. <em>Status: Pending Central
+                Upload.</em></p>
+
+        <div class="signature">
+            Digitally Signed: Dr. Thomas Reynolds (Site PI) | 2025-08-14 11:22:15
+        </div>
+    </div>
+</body>
+
+</html>
