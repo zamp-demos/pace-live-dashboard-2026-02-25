@@ -72,7 +72,7 @@ export default function HitlDecisionPanel({ run, logs }) {
             const { error: e3 } = await supabase
                 .from('activity_runs')
                 .update({
-                    status: 'running',
+                    status: 'in_progress',
                     current_status_text: `Applying decision: ${decLabel} (by ${name.trim()})`,
                 })
                 .eq('id', run.id);
