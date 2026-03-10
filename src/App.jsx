@@ -8,6 +8,7 @@ import ChatPanel from './components/ChatPanel';
 import Login from './components/Login';
 import DataExplorer from './components/DataExplorer';
 import InsightsPanel from './components/InsightsPanel';
+import ErrorBoundary from './components/ErrorBoundary';
 
 function App() {
   return (
@@ -18,7 +19,7 @@ function App() {
           <Route index element={<Navigate to="processes" replace />} />
           <Route path="processes" element={<ProcessList />} />
           <Route path="knowledge-base" element={<KnowledgeBase />} />
-          <Route path="process/:runId" element={<ProcessDetails />} />
+          <Route path="process/:runId" element={<ErrorBoundary><ProcessDetails /></ErrorBoundary>} />
           <Route path="data" element={<DataExplorer />} />
           <Route path="insights" element={<InsightsPanel />} />
         </Route>
