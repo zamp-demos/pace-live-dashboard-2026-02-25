@@ -32,10 +32,15 @@ const CASE_DETAIL_KEYS = new Set([
     'match_verdict', 'quality_score', 'final_status',
     'document_type', 'invoice_date', 'po_date', 'department',
     'linkages', 'decision_by', 'recommendation',
-    // Sanction screening keys
-    'originator', 'beneficiary', 'amount', 'screening_outcome', 'risk_level',
-    // Alert ingestion keys
-    'alert_id', 'source_system', 'trigger_type', 'screening_type'
+    // Sanction screening keys (snake_case normalized from actual data)
+    'originator', 'beneficiary', 'beneficiary_name', 'sender', 'amount',
+    'screening_outcome', 'risk_level', 'payment_channel', 'payment_route',
+    // Alert ingestion / disposition keys
+    'alert_id', 'source_system', 'trigger_type', 'screening_type',
+    'disposition', 'referral_id', 'sar_required', 'account_action',
+    'priority', 'customer_name', 'kyc_status', 'risk_rating',
+    'ubo_sanctions_status', 'ultimate_beneficial_owner',
+    'confidence', 'value_date', 'screening_party',
 ]);
 
 function isLargeData(value) {
@@ -108,27 +113,49 @@ function classifyMetadata(metadata) {
     return { reasoning, dataArtifacts };
 }
 
+/* Normalize a key to snake_case for matching against CASE_DETAIL_KEYS */
+function normalizeKey(key) {
+    return String(key).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+}
+
 /* Extract case details from all logs */
 function extractCaseDetails(logs) {
     const details = {};
     // Process logs in order so later steps overwrite earlier ones (more complete data)
     logs.forEach(log => {
         if (!log.metadata) return;
-        Object.entries(log.metadata).forEach(([key, value]) => {
-            if (CASE_DETAIL_KEYS.has(key) && value !== null && value !== undefined) {
-                // Only take simple displayable values
-                if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-                    details[key] = value;
-                } else if (typeof value === 'object' && !Array.isArray(value)) {
-                    // For small objects like linkages, flatten to a readable string
-                    const parts = Object.entries(value)
-                        .filter(([, v]) => v !== null)
-                        .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`);
-                    if (parts.length > 0 && parts.length <= 3) {
-                        details[key] = parts.join(', ');
+
+        // Scan both the top-level metadata AND the nested metadata.data object.
+        // NatWest artifact logs store all case fields inside metadata.data{} with
+        // Title Case keys (e.g. "Alert ID", "Risk Level"). We normalize to snake_case
+        // before matching against CASE_DETAIL_KEYS.
+        const sources = [log.metadata];
+        if (
+            log.metadata.data &&
+            typeof log.metadata.data === 'object' &&
+            !Array.isArray(log.metadata.data)
+        ) {
+            sources.push(log.metadata.data);
+        }
+
+        sources.forEach(source => {
+            Object.entries(source).forEach(([key, value]) => {
+                const normalizedKey = normalizeKey(key);
+                if (CASE_DETAIL_KEYS.has(normalizedKey) && value !== null && value !== undefined) {
+                    // Only take simple displayable values
+                    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+                        details[normalizedKey] = value;
+                    } else if (typeof value === 'object' && !Array.isArray(value)) {
+                        // For small objects like linkages, flatten to a readable string
+                        const parts = Object.entries(value)
+                            .filter(([, v]) => v !== null)
+                            .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`);
+                        if (parts.length > 0 && parts.length <= 3) {
+                            details[normalizedKey] = parts.join(', ');
+                        }
                     }
                 }
-            }
+            });
         });
     });
     return details;
@@ -905,7 +932,7 @@ const ProcessDetails = () => {
                                                 </div>
                                             )}
                                             {/* HITL decision buttons - inline at end of last log entry */}
-                                            {isLastGroup && run.status === 'needs_attention' && (
+                                            {isLastGroup && run?.status === 'needs_attention' && (
                                                 <HitlDecisionPanel run={run} logs={logs} />
                                             )}
                                         </div>
