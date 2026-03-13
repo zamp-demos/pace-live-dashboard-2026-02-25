@@ -296,61 +296,76 @@ function isEmailFile(artifact) {
     if (!artifact) return false;
     const fname = artifact.filename || '';
     if (fname.toLowerCase().endsWith('.eml')) return true;
-    const mime = artifact.metadata?.file_type || artifact.file_type || '';
-    if (mime === 'message/rfc822') return true;
+    if (artifact.file_type === 'message/rfc822') return true;
     return false;
 }
 
-/* ─── EmailArtifactPill ─── */
+function parseEmailContent(artifact) {
+    // Email fields stored as JSON in artifact.content
+    if (!artifact) return {};
+    try {
+        if (artifact.content && typeof artifact.content === 'string' && artifact.content.trim().startsWith('{')) {
+            return JSON.parse(artifact.content);
+        }
+    } catch (e) {}
+    return {};
+}
+
+/* ─── Gmail icon (real M logo colors) ─── */
 const GmailIcon = () => (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="flex-shrink-0">
-        <path d="M2 6C2 4.89543 2.89543 4 4 4H20C21.1046 4 22 4.89543 22 6V18C22 19.1046 21.1046 20 20 20H4C2.89543 20 2 19.1046 2 18V6Z" fill="white"/>
-        <path d="M4 4L12 13L20 4" stroke="#EA4335" strokeWidth="2" strokeLinecap="round"/>
-        <path d="M2 6L9.5 12.5" stroke="#4285F4" strokeWidth="1.5" strokeLinecap="round"/>
-        <path d="M22 6L14.5 12.5" stroke="#34A853" strokeWidth="1.5" strokeLinecap="round"/>
-        <path d="M2 18L9.5 12.5" stroke="#FBBC05" strokeWidth="1.5" strokeLinecap="round"/>
-        <path d="M22 18L14.5 12.5" stroke="#EA4335" strokeWidth="1.5" strokeLinecap="round"/>
+    <svg width="16" height="16" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" className="flex-shrink-0">
+        <path d="M2 6.5C2 5.4 2.9 4.5 4 4.5H20C21.1 4.5 22 5.4 22 6.5V17.5C22 18.6 21.1 19.5 20 19.5H4C2.9 19.5 2 18.6 2 17.5V6.5Z" fill="white"/>
+        <path d="M2 6.5L12 13.5L22 6.5" fill="none" stroke="#EA4335" strokeWidth="1.5"/>
+        <path d="M2 6.5L8 12" fill="none" stroke="#4285F4" strokeWidth="1.5" strokeLinecap="round"/>
+        <path d="M22 6.5L16 12" fill="none" stroke="#34A853" strokeWidth="1.5" strokeLinecap="round"/>
+        <path d="M2 17.5L8 12" fill="none" stroke="#FBBC05" strokeWidth="1.5" strokeLinecap="round"/>
+        <path d="M22 17.5L16 12" fill="none" stroke="#EA4335" strokeWidth="1.5" strokeLinecap="round"/>
+        <rect x="2" y="4.5" width="20" height="15" rx="2" fill="none" stroke="#DADCE0" strokeWidth="1"/>
     </svg>
 );
 
 const EmailArtifactPill = ({ artifact, onClick }) => {
-    const meta = artifact.metadata || {};
-    const displayName = meta.artifact_name || artifact.filename || 'Email';
-    const cleanName = displayName.replace(/\.eml$/i, '');
+    const email = parseEmailContent(artifact);
+    const displayName = email.display_name || artifact.filename?.replace(/\.eml$/i, '') || 'Email';
     return (
         <button
             onClick={() => onClick && onClick(artifact)}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#1a1a1a] hover:bg-[#333] transition-colors text-white text-[12px] font-medium max-w-full"
-            style={{maxWidth: '100%'}}
+            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#1a1a1a] hover:bg-[#2a2a2a] transition-colors text-white text-[12px] font-medium"
+            style={{maxWidth: '360px'}}
         >
             <GmailIcon />
-            <span className="truncate">{cleanName}</span>
+            <span className="truncate">{displayName}</span>
         </button>
     );
 };
 
 /* ─── EmailViewer modal ─── */
 const EmailViewer = ({ artifact, onClose }) => {
-    const meta = artifact.metadata || {};
+    if (!artifact) return null;
+    const email = parseEmailContent(artifact);
+    const displayName = email.display_name || artifact.filename?.replace(/\.eml$/i, '') || 'Email';
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+                {/* Header */}
                 <div className="flex items-center justify-between px-5 py-4 border-b border-[#E5E7EB]">
                     <div className="flex items-center gap-2.5">
                         <GmailIcon />
-                        <span className="text-[14px] font-semibold text-[#171717]">{(meta.artifact_name || artifact.filename || 'Email').replace(/\.eml$/i, '')}</span>
+                        <span className="text-[14px] font-semibold text-[#171717]">{displayName}</span>
                     </div>
-                    <button onClick={onClose} className="text-[#9CA3AF] hover:text-[#374151] text-xl font-light leading-none">×</button>
+                    <button onClick={onClose} className="text-[#9CA3AF] hover:text-[#374151] text-xl font-light leading-none w-6 h-6 flex items-center justify-center">×</button>
                 </div>
-                <div className="px-5 py-4 space-y-1.5 bg-[#F9FAFB] border-b border-[#E5E7EB]">
-                    {meta.email_from && <div className="flex gap-2 text-[12px]"><span className="text-[#6B7280] w-12 flex-shrink-0">From</span><span className="text-[#171717] font-medium">{meta.email_from}</span></div>}
-                    {meta.email_to && <div className="flex gap-2 text-[12px]"><span className="text-[#6B7280] w-12 flex-shrink-0">To</span><span className="text-[#171717]">{meta.email_to}</span></div>}
-                    {meta.email_cc && <div className="flex gap-2 text-[12px]"><span className="text-[#6B7280] w-12 flex-shrink-0">CC</span><span className="text-[#171717]">{meta.email_cc}</span></div>}
-                    {meta.email_date && <div className="flex gap-2 text-[12px]"><span className="text-[#6B7280] w-12 flex-shrink-0">Date</span><span className="text-[#171717]">{meta.email_date}</span></div>}
-                    {meta.email_subject && <div className="flex gap-2 text-[12px]"><span className="text-[#6B7280] w-12 flex-shrink-0">Subject</span><span className="text-[#171717] font-medium">{meta.email_subject}</span></div>}
+                {/* Fields */}
+                <div className="px-5 py-3 space-y-1.5 bg-[#F9FAFB] border-b border-[#E5E7EB]">
+                    {email.from && <div className="flex gap-3 text-[12px]"><span className="text-[#6B7280] w-14 flex-shrink-0 font-medium">From</span><span className="text-[#171717]">{email.from}</span></div>}
+                    {email.to && <div className="flex gap-3 text-[12px]"><span className="text-[#6B7280] w-14 flex-shrink-0 font-medium">To</span><span className="text-[#171717]">{email.to}</span></div>}
+                    {email.cc && <div className="flex gap-3 text-[12px]"><span className="text-[#6B7280] w-14 flex-shrink-0 font-medium">CC</span><span className="text-[#171717]">{email.cc}</span></div>}
+                    {email.date && <div className="flex gap-3 text-[12px]"><span className="text-[#6B7280] w-14 flex-shrink-0 font-medium">Date</span><span className="text-[#171717]">{email.date}</span></div>}
+                    {email.subject && <div className="flex gap-3 text-[12px]"><span className="text-[#6B7280] w-14 flex-shrink-0 font-medium">Subject</span><span className="text-[#171717] font-semibold">{email.subject}</span></div>}
                 </div>
-                <div className="px-5 py-4 max-h-80 overflow-y-auto">
-                    <pre className="text-[12px] text-[#374151] whitespace-pre-wrap font-sans leading-relaxed">{meta.email_body || '(No body)'}</pre>
+                {/* Body */}
+                <div className="px-5 py-4 max-h-80 overflow-y-auto custom-scrollbar">
+                    <pre className="text-[12px] text-[#374151] whitespace-pre-wrap font-sans leading-relaxed">{email.body || '(No body)'}</pre>
                 </div>
             </div>
         </div>
@@ -674,19 +689,7 @@ const ProcessDetails = () => {
     }, [logs]);
 
     const allArtifacts = useMemo(() => {
-        // Build a map from artifact_id → email log metadata for EML enrichment
-        const emailLogMap = {};
-        logs.forEach(l => {
-            if (l.log_type === 'artifact' && l.metadata?.email_from && l.metadata?.artifact_id) {
-                emailLogMap[l.metadata.artifact_id] = l.metadata;
-            }
-        });
-        const combined = artifacts.map(a => {
-            if (a.file_type === 'message/rfc822' && emailLogMap[a.id]) {
-                return { ...a, metadata: emailLogMap[a.id] };
-            }
-            return a;
-        });
+        const combined = [...artifacts];
         Object.values(logMetaClassified).forEach(({ dataArtifacts }) => {
             dataArtifacts.forEach(da => {
                 if (!combined.some(a => a.id === da.id)) combined.push(da);
@@ -751,22 +754,7 @@ const ProcessDetails = () => {
                             (l.metadata?.artifact_name && l.metadata.artifact_name === a.filename)
                     )
                 )
-            ).map(a => {
-                // Enrich EML artifacts with email fields from the matching artifact log
-                if (a.file_type === 'message/rfc822') {
-                    const emailLog = group.logs.find(l =>
-                        l.log_type === 'artifact' && (
-                            (l.metadata?.artifact_id && l.metadata.artifact_id === a.id) ||
-                            (l.metadata?.artifact_name) ||
-                            l.message?.includes(a.filename)
-                        ) && l.metadata?.email_from
-                    );
-                    if (emailLog) {
-                        return { ...a, metadata: emailLog.metadata };
-                    }
-                }
-                return a;
-            });
+            );
 
             // Collect all meta artifacts from classified metadata
             const metaArts = [];
